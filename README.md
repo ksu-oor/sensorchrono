@@ -10,6 +10,11 @@ Stream ECG (and EMG) data from a Shimmer device to Lab Streaming Layer (LSL), re
 - A Shimmer3 ECG unit with Bluetooth adapter
 - Lab Recorder (portable, no installation needed — run `LabRecorder.exe`)
 
+**If also using EMOTIV:**
+- An EMOTIV headset (Insight 2 or other Cortex-supported model)
+- EMOTIV Launcher installed and running in the background
+- An EMOTIV developer account with a registered app — get credentials at [emotiv.com/developer](https://www.emotiv.com/developer/)
+
 Install Python dependencies:
 
 ```
@@ -30,7 +35,22 @@ pip install -r requirements.txt
 
 ---
 
-## Step 2 — Start the LSL bridge
+## Step 2 — Set up EMOTIV credentials (EMOTIV only)
+
+Skip this step if you are not using an EMOTIV headset.
+
+Create a plain text file called `credentials.txt` in the project folder with your EMOTIV app credentials:
+
+```
+CLIENT_ID=your_client_id_here
+CLIENT_SECRET=your_client_secret_here
+```
+
+You can find these in your EMOTIV developer portal after registering an app.
+
+---
+
+## Step 3 — Start the LSL bridge
 
 Open a terminal in the project folder and run:
 
@@ -38,11 +58,30 @@ Open a terminal in the project folder and run:
 python run_lsl_streams.py
 ```
 
-When prompted:
-- Choose `ecg` for ECG only, `emg` for EMG only, or `both`.
-- Enter the COM port (e.g. `COM6` for ECG).
+When prompted, choose what to stream:
 
-The script will configure the Shimmer and start streaming to LSL. You will see output like:
+| Option | What it runs |
+|---|---|
+| Shimmer: `ecg` | ECG only |
+| Shimmer: `emg` | EMG only |
+| Shimmer: `both` | ECG + EMG |
+| Shimmer: `none` | Skip Shimmer |
+| EMOTIV: `app1` | One EMOTIV headset |
+| EMOTIV: `none` | Skip EMOTIV |
+
+Enter the Shimmer COM port when asked (e.g. `COM6`). If running EMOTIV, enter the path to your `credentials.txt` when asked.
+
+You can also pass everything as flags to skip the prompts:
+
+```
+# Shimmer ECG only
+python run_lsl_streams.py --shimmer ecg --ecg-port COM6 --emotiv none
+
+# Shimmer ECG + EMOTIV together
+python run_lsl_streams.py --shimmer ecg --ecg-port COM6 --emotiv app1 --credentials-file credentials.txt
+```
+
+The script will configure the devices and start streaming to LSL. You will see output like:
 
 ```
 [COM6] Sync: offset=3, error=0.2 ticks
@@ -54,17 +93,26 @@ Leave the terminal open and do not press Enter yet.
 
 ---
 
-## Step 3 — Record with Lab Recorder
+## Step 4 — Record with Lab Recorder
 
 1. Open `LabRecorder.exe`.
-2. Click **Update** — you should see `ShimmerECG` and `ShimmerMarkers` appear in the stream list.
-3. Check both streams.
+2. Click **Update** — you should see the available streams appear:
+
+| Stream | Present when |
+|---|---|
+| `ShimmerECG` | Shimmer ECG is running |
+| `ShimmerEMG` | Shimmer EMG is running |
+| `ShimmerMarkers` | Always (timing events) |
+| `EmotivEEG` | EMOTIV headset connected |
+| `EmotivMOT` | EMOTIV motion data |
+
+3. Check all the streams you want to record.
 4. Set the output file path under **Filename** (e.g. `recording.xdf`).
 5. Click **Start** to begin recording.
 
 ---
 
-## Step 4 — Begin data capture
+## Step 5 — Begin data capture
 
 Go back to the terminal and press **Enter**.
 
@@ -78,7 +126,7 @@ The default recording duration is 120 seconds. The script stops automatically wh
 
 ---
 
-## Step 5 — Stop Lab Recorder
+## Step 6 — Stop Lab Recorder
 
 Once the terminal prints `All done.`, click **Stop** in Lab Recorder. Your `.xdf` file is now saved.
 
