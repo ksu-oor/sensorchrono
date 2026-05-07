@@ -1,0 +1,7 @@
+matplotlib
+numpy
+pyserial
+pylsl
+pyxdf
+scipy
+websockets
