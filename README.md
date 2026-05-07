@@ -35,18 +35,32 @@ pip install -r requirements.txt
 
 ---
 
-## Step 2 — Set up EMOTIV credentials (EMOTIV only)
+## Step 2 — EMOTIV setup (skip if not using EMOTIV)
 
-Skip this step if you are not using an EMOTIV headset.
+### 2a — Install EMOTIV Launcher
 
-Create a plain text file called `credentials.txt` in the project folder with your EMOTIV app credentials:
+Download and install **EMOTIV Launcher** from [emotiv.com/emotiv-launcher](https://www.emotiv.com/emotiv-launcher/). This app must be running in the background whenever you stream EMOTIV data — it handles the headset connection and exposes the Cortex API that the bridge talks to.
+
+### 2b — Create a developer account and get credentials
+
+1. Go to [emotiv.com](https://www.emotiv.com) and create a free account if you don't have one.
+2. Log in and navigate to **My Account → Developer → My Apps**.
+3. Click **Create New App**.
+4. Fill in a name (anything works, e.g. `LSL Bridge`) and submit.
+5. Your **Client ID** and **Client Secret** will appear on the app page. Copy both.
+
+### 2c — Create your credentials file
+
+Create a plain text file called `credentials.txt` in the project folder:
 
 ```
 CLIENT_ID=your_client_id_here
 CLIENT_SECRET=your_client_secret_here
 ```
 
-You can find these in your EMOTIV developer portal after registering an app.
+### 2d — Approve data access in EMOTIV Launcher
+
+The first time you run the bridge, EMOTIV Launcher will show a popup asking you to approve data access for your app. Click **Accept**. You only need to do this once per app registration.
 
 ---
 
