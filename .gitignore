@@ -21,6 +21,10 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+.venv/
+venv/
+
+# Documents/CurrentStudy/ recordings live OUTSIDE this repo by default
 
 # Local editor/system files
 .vscode/

@@ -1,0 +1,59 @@
+# Device profile for Logitech BRIO webcam (4K UVC class)
+
+profile_id: logitech_brio
+device_type: video_audio
+manufacturer: Logitech
+transport: usb_uvc
+
+bridges:
+  video:
+    module: video_lsl_bridge
+    defaults:
+      device: 0
+      width: 1920
+      height: 1080
+      fps: 30                # 60 fps achievable only with bright lighting + manual exposure
+      codec: MJPG            # MJPG is the requested codec; driver may force YUY2
+      backend: dshow         # MSMF was unstable on Win11 in EXP-02 probe
+    streams_emitted:
+      - {name: VideoFrames, type: VideoFrames, channels: 2, rate_hz: 30}
+    container: mp4
+  audio:
+    module: audio_lsl_bridge
+    defaults:
+      device: "auto"           # by name "Microphone (Logitech BRIO)"
+      sample_rate_hz: 48000
+      block_size: 480          # 10 ms chunks
+      channels: 1
+    streams_emitted:
+      - {name: Audio, type: Audio, channels: 1, rate_hz: 48000}
+
+fiducial_detectors:
+  - source: keyboard_event
+    detector: frame_motion_onset
+    detector_args:
+      stream: VideoFrames
+      mp4_path: "{recording_dir}/EXP02_video.mp4"  # template; replaced at runtime
+      roi: auto                 # detect keyboard region first frame
+      threshold_diff: 25.0
+  - source: audio_pulse
+    detector: audio_onset
+    detector_args:
+      stream: Audio
+      bandpass_hz: [2000, 8000]
+      threshold_sd: 4.0
+      min_pulse_gap_ms: 500
+
+safety:
+  preflight_checks:
+    - check: usb_bandwidth_min_mbps
+      threshold: 50            # 1080p MJPG needs ~20 MB/s = 160 Mbps; USB3 has it
+
+calibration:
+  status: pending
+  measured_at: null
+  reference_fiducial: null
+  n_events: 0
+  lag_ms:
+    VideoFrames: null
+    Audio: null

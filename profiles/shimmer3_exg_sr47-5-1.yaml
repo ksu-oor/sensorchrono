@@ -1,0 +1,68 @@
+# Device profile for Shimmer3 EXG SR47-5-1 (low-noise EXG variant)
+# https://www.shimmersensing.com/wp-content/uploads/2025/11/Shimmer3-ExG-ECG-EMG-Ebio-Spec-Sheet.pdf.pdf
+
+profile_id: shimmer3_exg_sr47-5-1
+device_type: biosignal
+manufacturer: Shimmer Research
+hardware_revision: SR47-5-1
+firmware_assumed: LogAndStream >= 0.11
+transport: bluetooth_rfcomm     # RN42 BT 2.1+EDR via Windows virtual COM
+
+bridges:
+  exg:
+    module: shimmer_lsl_bridge   # path: ./shimmer_lsl_bridge.py
+    defaults:
+      mode: ecg                  # ecg | emg
+      sampling_rate_hz: 256
+      baud: 115200
+    streams_emitted:
+      - {name: ShimmerECG, type: ECG, channels: 4, rate_hz: 256}
+      - {name: ShimmerEMG, type: EMG, channels: 3, rate_hz: 512}
+      - {name: ShimmerMarkers, type: Markers, channels: 1, rate_hz: 0}
+      - {name: ShimmerDiagnostics_ECG, type: Diagnostics, channels: 5, rate_hz: 1}
+  accel:
+    module: shimmer_accel_bridge  # path: ./shimmer_accel_bridge.py (EXP-03)
+    defaults:
+      sampling_rate_hz: 256
+      sensor: low_noise           # low_noise | wide_range
+    streams_emitted:
+      - {name: ShimmerAccel, type: Accel, channels: 3, rate_hz: 256}
+
+# Default fiducial detectors for this device
+fiducial_detectors:
+  - source: audio_pulse
+    detector: accel_onset
+    detector_args:
+      stream: ShimmerAccel
+      axis: 2                  # z-axis for vertical taps; tune by rig
+      threshold_sd: 5.0
+      refractory_ms: 200
+      hp_cutoff_hz: 20.0
+  - source: keyboard_event
+    detector: accel_onset
+    detector_args:
+      stream: ShimmerAccel
+      axis: 2
+      threshold_sd: 3.0
+      refractory_ms: 150
+      hp_cutoff_hz: 10.0
+
+# Safety / preflight (advisory; recorder warns but does not block in MVP)
+safety:
+  preflight_checks: []          # TODO: query battery, link quality via BT
+  max_continuous_minutes: 240   # battery typically lasts longer; conservative
+
+# Calibration constants populated by `sensorchrono calibrate`
+# Each entry: lag_ms = (detected_t in stream) - (reference_t of fiducial)
+# After post-processing applies the subtraction, the modality's timestamps
+# refer to when the physical event happened, not when LSL saw the packet.
+calibration:
+  status: pending               # pending | measured | stale
+  measured_at: null
+  reference_fiducial: null
+  n_events: 0
+  lag_ms:
+    ShimmerECG: null
+    ShimmerEMG: null
+    ShimmerAccel: null
+  drift_ppm_observed: null      # populated by long-run validation
