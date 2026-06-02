@@ -1,0 +1,34 @@
+# Device profile for a wired Apple USB HID keyboard.
+# Generally applicable to any wired USB HID keyboard with stable polling.
+
+profile_id: apple_wired_usb_keyboard
+device_type: fiducial_source
+manufacturer: Apple
+hardware_revision: VID_05AC&PID_029F
+transport: usb_hid
+
+bridges:
+  keystroke:
+    module: keyboard_fiducial_bridge
+    defaults:
+      duration_s: 0          # 0 = run until parent terminates
+    streams_emitted:
+      - {name: KeyboardFiducial, type: Markers, channels: 1, rate_hz: 0}
+
+# Keystrokes ARE the fiducial source. They have no internal detector
+# of their own; other devices' detectors use them as the reference.
+fiducial_detectors: []
+
+provides_fiducial:
+  source: keyboard_event
+  reference_quality_ms: 2.0   # measured EXP-01: max delta to ECG = 2.1 ms
+
+safety:
+  preflight_checks:
+    - check: transport_is_wired
+      forbid: [bluetooth]      # BT keyboards add 10-30 ms jittery latency
+
+calibration:
+  # The keyboard is the REFERENCE; its lag is 0 by definition.
+  # Other devices' lags are measured RELATIVE to keystrokes.
+  status: reference

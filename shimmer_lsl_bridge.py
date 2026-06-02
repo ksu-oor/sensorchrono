@@ -16,7 +16,7 @@ from scipy.signal import butter, sosfiltfilt
 ECG_PORT = "COM6"
 EMG_PORT = "COM11"
 BAUD     = 115200
-OUT_DIR  = r"C:\Users\mnaser1\OneDrive - Kennesaw State University\Desktop\synchronization"
+OUT_DIR  = r"C:\Users\ngoldbla\Desktop\LSL_data"
 
 WARMUP_S = 2.0
 RECORD_S =120
@@ -33,6 +33,10 @@ class LslTimestampMapper:
         self.last_raw = None
         self.wrap_count = 0
         self.offset = None
+        # Diagnostics state
+        self.observed_min_offset = None      # tightest (lowest-latency) packet seen
+        self.last_observed_offset = None     # most recent observed offset
+        self.samples_since_reset = 0
 
     def _unwrap_ticks(self, raw_ticks):
         if self.last_raw is not None and raw_ticks < self.last_raw:
@@ -45,6 +49,11 @@ class LslTimestampMapper:
         unwrapped_ticks = self._unwrap_ticks(raw_ticks)
         device_time = unwrapped_ticks / self.ticks_per_second
         observed_offset = arrival_lsl - device_time
+        self.last_observed_offset = observed_offset
+        self.samples_since_reset += 1
+
+        if self.observed_min_offset is None or observed_offset < self.observed_min_offset:
+            self.observed_min_offset = observed_offset
 
         if self.offset is None:
             self.offset = observed_offset
@@ -86,6 +95,49 @@ def create_marker_outlet():
     ch.append_child_value("label", "marker")
     ch.append_child_value("type", "Markers")
     return pylsl.StreamOutlet(info)
+
+
+def create_diagnostics_outlet(stream_label):
+    """1 Hz regular stream emitting the mapper's internal state.
+
+    Channels (float32):
+        0: offset_s              (mapper.offset, the smoothed estimate)
+        1: last_observed_s       (most recent raw arrival-minus-device offset)
+        2: min_observed_s        (tightest packet seen so far)
+        3: residual_ms           (last_observed - offset, current jitter)
+        4: samples_since_reset   (cumulative sample count)
+    """
+    info = pylsl.StreamInfo(f"ShimmerDiagnostics_{stream_label}",
+                            "Diagnostics", 5, 1.0,
+                            pylsl.cf_float32,
+                            f"shimmer_diag_{stream_label}")
+    chns = info.desc().append_child("channels")
+    for label, unit in [("offset_s", "seconds"),
+                        ("last_observed_s", "seconds"),
+                        ("min_observed_s", "seconds"),
+                        ("residual_ms", "milliseconds"),
+                        ("samples_since_reset", "count")]:
+        ch = chns.append_child("channel")
+        ch.append_child_value("label", label)
+        ch.append_child_value("unit", unit)
+        ch.append_child_value("type", "Diagnostics")
+    return pylsl.StreamOutlet(info)
+
+
+def diagnostics_worker(mapper, outlet, stop_event, label):
+    """Push the mapper's state to LSL once per second until stop_event."""
+    import time as _t
+    while not stop_event.is_set():
+        if mapper.offset is not None and mapper.last_observed_offset is not None:
+            residual_ms = (mapper.last_observed_offset - mapper.offset) * 1000.0
+            outlet.push_sample([
+                float(mapper.offset),
+                float(mapper.last_observed_offset),
+                float(mapper.observed_min_offset or 0.0),
+                float(residual_ms),
+                float(mapper.samples_since_reset),
+            ])
+        _t.sleep(1.0)
 
 
 def emit_marker(outlet, lock, event, stream, timestamp=None, **payload):
@@ -185,6 +237,15 @@ def run_ecg(ser, out, marker_outlet, marker_lock, shared_start):
 
     records = []
     ts_mapper = LslTimestampMapper(ticks_per_second=32768)
+    diag_outlet = create_diagnostics_outlet("ECG")
+    diag_stop = threading.Event()
+    diag_thread = threading.Thread(
+        target=diagnostics_worker,
+        args=(ts_mapper, diag_outlet, diag_stop, "ECG"),
+        daemon=True,
+    )
+    diag_thread.start()
+    print(f"[{ser.name}] LSL outlet: ShimmerDiagnostics_ECG @ 1 Hz")
     last_ts = None
     recording = False
     t_record_start = None
@@ -224,6 +285,7 @@ def run_ecg(ser, out, marker_outlet, marker_lock, shared_start):
             if recording:
                 records.append((lsl_t, device_t, lead1, lead2))
 
+    diag_stop.set()
     print(f"[{ser.name}] Done. {len(records)} ECG samples.")
     emit_marker(marker_outlet, marker_lock, "recording_stopped", "ECG",
                 device_port=ser.name, samples=len(records))
