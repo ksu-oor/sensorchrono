@@ -107,10 +107,11 @@ class SessionController:
             from sensorchrono.devices.simulated import default_simulated_fleet
 
             self._adapters = default_simulated_fleet()
-            return self._adapters
-        raise NotImplementedError(
-            "real device adapters arrive in Phase 2; pass adapters= or use dry_run"
-        )
+        else:
+            from sensorchrono.devices.bridge_adapter import default_real_fleet
+
+            self._adapters = default_real_fleet()
+        return self._adapters
 
     def _profile_lag_ms(self) -> dict[str, float]:
         try:

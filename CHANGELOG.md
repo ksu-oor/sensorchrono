@@ -491,6 +491,23 @@ LslMonitor staging gate to DONE.
 
 Filled in `simulated.synth_ecg` with real P-QRS-T (Gaussian-sum) morphology.
 
+### SensorChrono Phase 2 (real device adapters) landed
+Adapters that drive the actual bridges as subprocesses via `BridgeProcess`.
+
+- `devices/bridge_adapter.py`: `BridgeAdapter` base (build argv → spawn →
+  readiness → teardown; process-health liveness, real rates come from the LSL
+  monitor) + `default_real_fleet()`.
+- `devices/shimmer_exg.py`: defuses BOTH Shimmer deadlock traps — passes the
+  positional `mode` ("ecg") AND `--no-prompt` (tested). ECG→[ShimmerECG,
+  ShimmerDiagnostics_ECG], EMG mode supported.
+- `devices/camera.py`: drives video bridge via `--out-dir`+`--tag` (NOT the
+  non-existent `--mp4`); exposes `mp4_path(session)` for post-processing.
+- `devices/microphone.py`, `devices/keyboard.py`: audio + keyboard bridges.
+- `session._fleet()` real path now builds the real fleet.
+
+Tests assert each adapter's readiness regex matches the bridge's *literal*
+stdout line (the stringly-typed contract), argv correctness, the headless
+guard, and a stub-launch lifecycle end-to-end. 101 tests green on macOS.
+
 ### Next
-- Phase 2: real device adapters (drive shimmer/video/audio/keyboard bridges
-  via `BridgeProcess`; Shimmer adapter always `--no-prompt`).
+- Phase 3: PySide6 GUI wizard (wire pages to the FSM signals).
