@@ -402,3 +402,61 @@ Closed the four gaps left at end of afternoon session:
   use cases.
 - sensorchrono package migration still pending.
 - Hour-scale audio drift uncertified.
+
+## 2026-06-04
+
+### SensorChrono productization — Phase 0 (foundation) landed
+Began wrapping the proven capture + analysis tiers in a guided desktop app
+(`sensorchrono/` package). Phase 0 is hardware-free foundation; capture
+bridges and `analysis/` are untouched. Worked on macOS (Python 3.14).
+
+1. **Plan fact-checked against the repo first (7-agent sweep).** Several
+   load-bearing plan assumptions were wrong and corrected before coding:
+   the video bridge uses `--out-dir`+`--tag` (not `--mp4`); `unified.parquet`
+   is never written (v1 consumes the per-stream CSVs/JSON instead — decided);
+   `postprocess.run()` takes a `Path` + keyword-only args; bridge readiness
+   strings differ per bridge (Shimmer is the odd one out). All 7 LSL stream
+   names verified to match producer↔consumer exactly.
+
+2. **Foundation modules:** `contract.py` (canonical `StreamName` StrEnum +
+   `StreamSpec` registry — single source of truth), `devices/base.py`
+   (`DeviceAdapter` ABC; `launch()->None` so sim + real adapters share it),
+   `profiles.py` (pyyaml loader; maps descriptive lag keys → canonical names,
+   Audio 46.5 ms / Video 1.35 ms / ECG None), `config.py` (`SessionConfig`
+   + all-errors validation + `config.yaml` round-trip), `devices/simulated.py`
+   (synthetic adapters; lazy `pylsl`; pure numpy `synth_*` generators).
+
+3. **First pytest suite (57 tests, hardware-free).** Was no test framework
+   before. `pyproject.toml` wires pytest (`pythonpath=["."]`).
+
+4. **Adversarial self-review (32-agent workflow) → 28 findings folded in.**
+   Notably: contract had VideoFrames=1ch (real bridge emits 2 — fixed +
+   cross-tier consistency test); `validate()` secretly `mkdir`'d (now a pure
+   predicate); the dry-run liveness gate could report "live" after its outlet
+   thread died (now consults thread health + surfaces the error); `config`
+   load now rejects a missing `dry_run` (reproducibility) and unknown keys.
+
+5. **pylsl viability on macOS confirmed.** `pip install pylsl` ships a working
+   liblsl 117 wheel on Python 3.14; a `SimulatedShimmerEXG` round-trip
+   resolved real `ShimmerECG`/`Audio` outlets with data flowing. → Phase 1
+   orchestration (supervisor/lsl_monitor) can be validated against *real* LSL
+   on macOS; Windows is reserved for actual hardware.
+
+### Files added
+- `sensorchrono/{contract,config,profiles,__main__}.py`
+- `sensorchrono/devices/{__init__,base,simulated}.py`
+- `tests/{test_contract,test_profiles,test_config,test_simulated,test_base,test_main,test_review_fixes}.py`
+- `pyproject.toml`
+
+### Files updated
+- `requirements.txt` (added pyyaml, PySide6, pyqtgraph, opencv-python,
+  sounddevice, pynput, pyinstaller; grouped runtime/gui/dev)
+- `sensorchrono/__init__.py` (docstring → actual plan layout)
+- `CHANGELOG.md`, `RESUME.md`
+
+### Next
+- Phase 1: orchestration core (`supervisor`, `lsl_monitor`, `preflight`,
+  `labrecorder` RCS+fallbacks, `postprocess_runner`, `session` FSM) — all
+  testable against real synthetic LSL on macOS.
+- Open: synthetic ECG morphology in `simulated.synth_ecg` left as a
+  placeholder sine for the operator to flesh out.

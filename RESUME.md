@@ -1,7 +1,17 @@
 # Resume Guide
 
-**Last session ended:** 2026-06-03 (evening)
-**Status:** **Sync Suite v1 shipped.** Full end-to-end pipeline works:
+**Last session ended:** 2026-06-04
+**Status:** **Sync Suite v1 shipped** + **SensorChrono Phase 0 (app foundation) landed.**
+
+> **SensorChrono productization in progress** — wrapping the proven tiers in a
+> guided desktop app under `sensorchrono/`. Phase 0 done (contract/config/
+> profiles/DeviceAdapter ABC/simulated adapters + first pytest suite, 57 tests
+> green on macOS, no hardware). Capture bridges + `analysis/` untouched. Next:
+> Phase 1 orchestration core. See `CHANGELOG.md` 2026-06-04 and the plan.
+> Dev note: `pip install pylsl` works on this Python 3.14 box (liblsl 117), so
+> real synthetic-LSL dry-run runs on macOS — Windows only needed for hardware.
+
+The Sync Suite pipeline (unchanged, still the analysis engine the app drives):
 
   1. `launchers/launch_calibrated_recording.bat` opens LabRecorder + 4 bridges with in-situ calibration protocol
   2. `analysis/recording_audit.py` produces one-command per-recording quality reports
@@ -32,7 +42,7 @@ Read this first when resuming. Detailed history is in `CHANGELOG.md`. Strategic 
 | **End-to-end 5-stage post-processing pipeline** | `analysis/postprocess.py` | **all 5 stages OK on EXP-06, residual 0.0 ms** |
 | **Calibrated-recording launcher** | `launchers/launch_calibrated_recording.bat` | **canonical one-click rig with calibration protocol** |
 | Per-rig device profiles | `profiles/*.yaml` | Shimmer profile has measured `drift_ppm_observed` from 3 runs |
-| `sensorchrono/` package skeleton | empty `__init__.py` in subdirs | still placeholder for v1 migration |
+| **SensorChrono app — Phase 0 foundation** | `sensorchrono/{contract,config,profiles,devices/}` | **57 pytest tests green (macOS, hardware-free); real-LSL dry-run round-trip verified** |
 
 ## What doesn't work / open
 
