@@ -572,7 +572,29 @@ The **v1.0.0 tag is deliberately withheld** until the
 Phase-5 acceptance checklist passes on hardware — the tag asserts
 hardware-validated end-to-end sync.
 
+### Post-build adversarial review (Phases 1–4) → teardown hardening
+A 38-agent review (find → adversarially verify → synthesize) found one coherent
+high-value theme: **the unhappy exit paths leaked resources.** Closing the
+window, aborting, restarting, or a failed staging only stopped the GUI timers —
+the supervisor fleet (bridge subprocesses holding COM/camera/mic), the recorder
+(LabRecorder), and the monitor thread kept running. Fixes:
+
+- `SessionController.fail()` now tears down capture (monitor + recorder + fleet)
+  before going ERROR, so NO failure path can strand resources; `abort()` routes
+  through it; `stop_recording()` uses the shared `_teardown_capture()` and
+  surfaces any stop errors (previously swallowed).
+- New `SessionController.shutdown()` (teardown without state change) for the GUI
+  window-close path.
+- `MainWindow.closeEvent/_abort/_restart` now call the controller's
+  shutdown/abort so closing mid-recording can't orphan bridges/LabRecorder.
+- `LslMonitor._run` loop wrapped in try/except/finally — a monitor-thread crash
+  now publishes a degraded report and closes inlets instead of vanishing.
+- `parse_report()` rejects malformed / non-object JSON with a clear error.
+
+6 regression tests added (teardown-on-fail/abort/shutdown, garbage-JSON,
+close-event). 115 tests green under the venv (106 + 2 skipped bare box).
+
 ### Status
 SensorChrono v1 is code-complete and validated end-to-end on macOS (dry-run +
-real LSL). Remaining before tagging v1.0.0: run the Phase-5 checklist on the
-Windows rig.
+real LSL), hardened by an adversarial review. Remaining before tagging v1.0.0:
+run the Phase-5 checklist on the Windows rig.

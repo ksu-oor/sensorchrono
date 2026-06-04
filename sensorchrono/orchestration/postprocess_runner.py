@@ -92,7 +92,12 @@ def parse_report(out_dir: Path | str) -> PostprocessResult:
     jpath = out_dir / "pipeline_report.json"
     if not jpath.exists():
         raise PostprocessError(f"no pipeline_report.json in {out_dir}")
-    data = json.loads(jpath.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(jpath.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise PostprocessError(f"could not read {jpath}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise PostprocessError(f"{jpath} is not a JSON object")
     md = out_dir / "pipeline_report.md"
     return PostprocessResult(
         overall_status=data.get("overall_status", "error"),

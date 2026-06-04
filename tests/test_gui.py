@@ -99,3 +99,12 @@ def test_done_page_summary(app, tmp_path):
     w.done.show_summary(w.controller)
     text = w.done.summary.text()
     assert "p01" in text and ("ok" in text or "PASS" in text)
+
+
+def test_close_event_tears_down_controller(app, tmp_path):
+    w = MainWindow(_session(tmp_path))
+    w._build_controller(w._base_session)
+    called = []
+    w.controller.shutdown = lambda: (called.append(True), [])[1]  # record the call
+    w.close()
+    assert called, "closeEvent must shut the controller down (no orphaned bridges)"

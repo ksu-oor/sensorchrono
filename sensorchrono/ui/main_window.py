@@ -205,6 +205,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.controller.stop_recording(xdf_path=None, mp4_path=mp4)
 
     def _restart(self) -> None:
+        if self.controller is not None:
+            self.controller.shutdown()  # tear down the finished run's resources
         self._stop_live()
         self.setup.load(self._base_session)
         self.stack.setCurrentWidget(self.setup)
@@ -218,6 +220,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.setup.show_error(str(exc))
 
     def _abort(self) -> None:
+        if self.controller is not None:
+            self.controller.abort()  # tears down fleet + recorder + monitor
         self._stop_live()
         self.stack.setCurrentWidget(self.setup)
 
@@ -275,6 +279,8 @@ class MainWindow(QtWidgets.QMainWindow):
         super().keyPressEvent(event)
 
     def closeEvent(self, event) -> None:
+        if self.controller is not None:
+            self.controller.shutdown()  # never orphan bridges/recorder on close
         self._stop_live()
         super().closeEvent(event)
 

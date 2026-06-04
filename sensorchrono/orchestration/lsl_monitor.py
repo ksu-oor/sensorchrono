@@ -121,45 +121,55 @@ class LslMonitor:
 
         inlets: dict[StreamName, object] = {}
         last_ts: dict[StreamName, float | None] = {n: None for n in self.expected}
-        for name in self.expected:
-            found = pylsl.resolve_byprop("name", str(name), 1, 1.0)
-            if found:
-                inlets[name] = pylsl.StreamInlet(found[0], max_buflen=4)
-
-        while not self._stop.wait(self.poll_dt):
-            rows: list[StreamLiveness] = []
+        try:
             for name in self.expected:
-                spec = STREAM_SPECS[name]
-                inlet = inlets.get(name)
-                if inlet is None:  # try to (re)resolve a late/return stream
-                    found = pylsl.resolve_byprop("name", str(name), 1, 0.1)
-                    if found:
-                        inlets[name] = inlet = pylsl.StreamInlet(found[0], max_buflen=4)
-                if inlet is None:
-                    rows.append(compute_stream_liveness(spec, present=False, n_samples=0, window_s=self.poll_dt, max_gap_s=0.0, measured_channels=0))
-                    continue
-                # Drain the inlet fully: pull_chunk caps at ~1024 samples per
-                # call, which would massively under-count a 48 kHz stream and
-                # falsely fail its rate check. Loop until the buffer is empty.
-                all_stamps: list[float] = []
-                while True:
-                    _, stamps = inlet.pull_chunk(timeout=0.0, max_samples=16384)
-                    if not stamps:
-                        break
-                    all_stamps.extend(stamps)
-                    if len(stamps) < 16384:
-                        break
-                n = len(all_stamps)
-                gap = 0.0
-                if all_stamps:
-                    prev = last_ts[name]
-                    seq = ([prev] + all_stamps) if prev is not None else all_stamps
-                    if len(seq) > 1:
-                        gap = max(b - a for a, b in zip(seq, seq[1:]))
-                    last_ts[name] = all_stamps[-1]
-                ch = inlet.info().channel_count()
-                rows.append(compute_stream_liveness(spec, present=True, n_samples=n, window_s=self.poll_dt, max_gap_s=gap, measured_channels=ch))
-            self._set(LivenessReport(device=self.device, streams=tuple(rows)))
+                found = pylsl.resolve_byprop("name", str(name), 1, 1.0)
+                if found:
+                    inlets[name] = pylsl.StreamInlet(found[0], max_buflen=4)
+
+            while not self._stop.wait(self.poll_dt):
+                rows: list[StreamLiveness] = []
+                for name in self.expected:
+                    spec = STREAM_SPECS[name]
+                    inlet = inlets.get(name)
+                    if inlet is None:  # try to (re)resolve a late/return stream
+                        found = pylsl.resolve_byprop("name", str(name), 1, 0.1)
+                        if found:
+                            inlets[name] = inlet = pylsl.StreamInlet(found[0], max_buflen=4)
+                    if inlet is None:
+                        rows.append(compute_stream_liveness(spec, present=False, n_samples=0, window_s=self.poll_dt, max_gap_s=0.0, measured_channels=0))
+                        continue
+                    # Drain the inlet fully: pull_chunk caps at ~1024 samples per
+                    # call, which would massively under-count a 48 kHz stream and
+                    # falsely fail its rate check. Loop until the buffer is empty.
+                    all_stamps: list[float] = []
+                    while True:
+                        _, stamps = inlet.pull_chunk(timeout=0.0, max_samples=16384)
+                        if not stamps:
+                            break
+                        all_stamps.extend(stamps)
+                        if len(stamps) < 16384:
+                            break
+                    n = len(all_stamps)
+                    gap = 0.0
+                    if all_stamps:
+                        prev = last_ts[name]
+                        seq = ([prev] + all_stamps) if prev is not None else all_stamps
+                        if len(seq) > 1:
+                            gap = max(b - a for a, b in zip(seq, seq[1:]))
+                        last_ts[name] = all_stamps[-1]
+                    ch = inlet.info().channel_count()
+                    rows.append(compute_stream_liveness(spec, present=True, n_samples=n, window_s=self.poll_dt, max_gap_s=gap, measured_channels=ch))
+                self._set(LivenessReport(device=self.device, streams=tuple(rows)))
+        except Exception as exc:
+            # a monitor-thread crash must surface as a degraded report, not vanish
+            self._publish_absent(f"monitor error: {exc!r}")
+        finally:
+            for inlet in inlets.values():
+                try:
+                    inlet.close_stream()
+                except Exception:
+                    pass
 
     def _publish_absent(self, note: str) -> None:  # pragma: no cover
         rows = [

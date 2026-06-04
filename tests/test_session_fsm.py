@@ -129,3 +129,82 @@ def test_uncalibrated_recording_requires_opt_in(tmp_path):
         c.to_recording(allow_uncalibrated=False)
     c.to_recording(allow_uncalibrated=True)  # explicit opt-in proceeds
     assert c.state == SessionState.RECORD and not c.calibrated
+
+
+# -- teardown completeness (review fixes: no exit path strands resources) --
+class _StopTrackingAdapter(DeviceAdapter):
+    name = "track"
+
+    def __init__(self):
+        self.stopped = False
+
+    def streams(self):
+        return [StreamDef.from_contract(StreamName.AUDIO)]
+
+    def launch(self, session):
+        pass
+
+    def is_ready(self, timeout_s):
+        return ReadyResult(True, "track: ready")
+
+    def check_liveness(self, window_s):
+        return LivenessReport("track", (StreamLiveness(StreamName.AUDIO, True, 48000, 48000, 0.0, True, 1, 1, ""),))
+
+    def stop(self):
+        self.stopped = True
+
+
+class _StopRecorder:
+    def __init__(self):
+        self.stopped = False
+
+    def start(self, session, *, run=1):
+        pass
+
+    def stop(self):
+        self.stopped = True
+
+
+class _StopMonitor:
+    def __init__(self):
+        self.started = self.stopped = False
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        self.stopped = True
+
+    def snapshot(self):
+        return LivenessReport("m", ())
+
+
+def test_fail_tears_down_fleet_recorder_monitor(tmp_path):
+    adapter, rec, mon = _StopTrackingAdapter(), _StopRecorder(), _StopMonitor()
+    c = SessionController(_session(tmp_path), adapters=[adapter], recorder=rec, monitor=mon)
+    c.run_preflight()
+    c.start_staging()  # launches supervisor + monitor
+    assert c.state == SessionState.LIVENESS
+    c.fail("boom")
+    assert c.state == SessionState.ERROR
+    assert adapter.stopped and rec.stopped and mon.stopped  # nothing stranded
+
+
+def test_abort_routes_through_fail_and_tears_down(tmp_path):
+    adapter = _StopTrackingAdapter()
+    c = SessionController(_session(tmp_path), adapters=[adapter])
+    c.run_preflight()
+    c.start_staging()
+    c.abort()
+    assert c.state == SessionState.ERROR and adapter.stopped
+
+
+def test_shutdown_tears_down_without_changing_state(tmp_path):
+    adapter, mon = _StopTrackingAdapter(), _StopMonitor()
+    c = SessionController(_session(tmp_path), adapters=[adapter], monitor=mon)
+    c.run_preflight()
+    c.start_staging()
+    assert c.state == SessionState.LIVENESS
+    c.shutdown()  # GUI window-close path: tear down but DON'T go to ERROR
+    assert adapter.stopped and mon.stopped
+    assert c.state == SessionState.LIVENESS

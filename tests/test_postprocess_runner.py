@@ -46,3 +46,15 @@ def test_parse_report_reads_status_and_stages(tmp_path):
 def test_parse_report_missing_raises(tmp_path):
     with pytest.raises(PostprocessError):
         parse_report(tmp_path)
+
+
+def test_parse_report_rejects_garbage_json(tmp_path):
+    (tmp_path / "pipeline_report.json").write_text("{not valid json")
+    with pytest.raises(PostprocessError):
+        parse_report(tmp_path)
+
+
+def test_parse_report_rejects_non_object_json(tmp_path):
+    (tmp_path / "pipeline_report.json").write_text("[1, 2, 3]")
+    with pytest.raises(PostprocessError):
+        parse_report(tmp_path)

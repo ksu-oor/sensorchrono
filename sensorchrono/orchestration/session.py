@@ -94,8 +94,36 @@ class SessionController:
                 f"action not allowed in state {self.state}; expected one of {[s.value for s in states]}"
             )
 
+    def _teardown_capture(self) -> list[str]:
+        """Stop the monitor, recorder, and device fleet — each guarded so one
+        failure can't strand the others. Idempotent. Returns any errors."""
+        errors: list[str] = []
+        if self._monitor is not None:
+            try:
+                self._monitor.stop()
+            except Exception as exc:
+                errors.append(f"monitor.stop: {exc!r}")
+        if self._recorder is not None:
+            try:
+                self._recorder.stop()
+            except Exception as exc:
+                errors.append(f"recorder.stop: {exc!r}")
+        if self.supervisor is not None:
+            errors.extend(f"{name}.stop: {exc!r}" for name, exc in self.supervisor.stop_all())
+        return errors
+
+    def shutdown(self) -> list[str]:
+        """Tear down all capture resources WITHOUT changing state — for the GUI
+        window-close path (closing isn't an error). Idempotent."""
+        return self._teardown_capture()
+
     def fail(self, message: str) -> None:
-        """Force the ERROR state from anywhere, preserving any partial work."""
+        """Force ERROR from anywhere, tearing down capture first so no failure
+        path strands a running fleet/recorder/monitor. Any partial recording
+        already on disk is preserved."""
+        errors = self._teardown_capture()
+        if errors:
+            message = f"{message} | teardown issues: {'; '.join(errors)}"
         self.error = message
         self.errored.emit(message)
         self._goto(SessionState.ERROR)
@@ -203,12 +231,9 @@ class SessionController:
     def stop_recording(self, *, xdf_path: Path | None = None, mp4_path: Path | None = None) -> None:
         """End capture: tear down the fleet + recorder, then post-process."""
         self._require(SessionState.RECORD)
-        if self.supervisor is not None:
-            self.supervisor.stop_all()
-        if self._recorder is not None:
-            self._recorder.stop()
-        if self._monitor is not None:
-            self._monitor.stop()
+        errors = self._teardown_capture()
+        if errors:
+            self.progress.emit("teardown issues: " + "; ".join(errors))
         self._goto(SessionState.POSTPROCESS)
         try:
             self.postprocess_result = self._do_postprocess(xdf_path, mp4_path)
@@ -230,13 +255,6 @@ class SessionController:
 
     # -- recovery -----------------------------------------------------------
     def abort(self) -> None:
-        """Hard stop from anywhere: tear everything down, end in ERROR."""
-        try:
-            if self.supervisor is not None:
-                self.supervisor.stop_all()
-            if self._recorder is not None:
-                self._recorder.stop()
-            if self._monitor is not None:
-                self._monitor.stop()
-        finally:
-            self.fail("aborted by operator")
+        """Hard stop from anywhere: tear everything down, end in ERROR.
+        (fail() now performs the teardown, so this just routes through it.)"""
+        self.fail("aborted by operator")
