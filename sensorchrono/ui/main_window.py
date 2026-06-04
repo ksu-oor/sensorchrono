@@ -148,8 +148,10 @@ class MainWindow(QtWidgets.QMainWindow):
             fleet = default_real_fleet()
         expected = [s.name for a in fleet for s in a.streams()]
         self._monitor = LslMonitor(expected)
+        recorder, launcher = self._make_recorder(session)
         self.controller = SessionController(
-            session, adapters=fleet, monitor=self._monitor, recorder=self._make_recorder(session),
+            session, adapters=fleet, monitor=self._monitor,
+            recorder=recorder, labrecorder_launcher=launcher,
         )
         c = self.controller
         c.state_changed.connect(self._on_state)
@@ -159,9 +161,27 @@ class MainWindow(QtWidgets.QMainWindow):
         c.fiducial_counted.connect(self._on_fiducial)
 
     def _make_recorder(self, session: SessionConfig):
+        """Return ``(recorder, launcher)``. For a real run, try to launch a
+        bundled LabRecorder so its RCS is reachable *before* make_recorder picks
+        a backend (RCS auto-wins). If no bundle / RCS never comes up, make_recorder
+        falls back to the manual recorder — the launcher is still returned so the
+        FSM tears it down. Dry-run takes neither."""
         if session.dry_run:
-            return None
+            return None, None
         from sensorchrono.orchestration.labrecorder import make_recorder
+        from sensorchrono.orchestration.labrecorder_launcher import (
+            LabRecorderLauncher,
+            bundled_labrecorder_dir,
+        )
+
+        launcher = None
+        lr_dir = bundled_labrecorder_dir()
+        if lr_dir is not None:
+            launcher = LabRecorderLauncher(lr_dir)
+            try:
+                launcher.launch(session.out_dir)
+            except Exception:
+                pass  # RCS just won't be up; make_recorder falls back to manual
 
         def prompt(msg):
             QtWidgets.QMessageBox.information(self, "LabRecorder", msg)
@@ -170,9 +190,10 @@ class MainWindow(QtWidgets.QMainWindow):
             return QtWidgets.QMessageBox.question(self, "LabRecorder", msg) == QtWidgets.QMessageBox.StandardButton.Yes
 
         try:
-            return make_recorder(manual_prompt=prompt, manual_confirm=confirm)
+            recorder = make_recorder(manual_prompt=prompt, manual_confirm=confirm)
         except Exception:
-            return None
+            recorder = None
+        return recorder, launcher
 
     # -- transitions (page actions) ----------------------------------------
     def _start_session(self) -> None:

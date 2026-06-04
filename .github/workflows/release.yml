@@ -1,0 +1,134 @@
+name: Release
+
+# Build the Windows installer. A v*.*.* tag publishes a GitHub Release; a manual
+# run (workflow_dispatch) produces a downloadable artifact for hardware testing
+# WITHOUT publishing anything.
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version for a test build, e.g. 1.0.0-rc1 (no leading v)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Resolve the version from the tag (strip leading v) or the dispatch input,
+      # then HARD-VALIDATE it before it is ever used to stamp files. The raw
+      # dispatch input is treated as untrusted: it only reaches a shell as an env
+      # var, and a value that isn't strict semver is rejected outright.
+      - name: Resolve and validate version
+        id: ver
+        shell: pwsh
+        env:
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+          REF: ${{ github.ref }}
+        run: |
+          if ($env:REF -like "refs/tags/v*") {
+            $v = $env:REF -replace "^refs/tags/v", ""
+          } elseif ($env:DISPATCH_VERSION) {
+            $v = $env:DISPATCH_VERSION
+          } else {
+            throw "No version: push a v*.*.* tag or supply the workflow_dispatch 'version' input."
+          }
+          if ($v -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$') {
+            throw "Refusing unsafe/invalid version string: '$v'"
+          }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Resolved version: $v"
+
+      # Stamp into the BUILD TREE only (never committed). Both files use a flat
+      # anchored regex so only the version literal changes.
+      - name: Stamp version into the build tree
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          (Get-Content sensorchrono/__init__.py) `
+            -replace '^__version__ = ".*"', "__version__ = `"$env:VERSION`"" |
+            Set-Content sensorchrono/__init__.py
+          (Get-Content build/installer.iss) `
+            -replace '^#define AppVersion ".*"', "#define AppVersion `"$env:VERSION`"" |
+            Set-Content build/installer.iss
+
+      - name: Create venv and install dependencies
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python.exe -m pip install --upgrade pip
+          .venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+
+      # Smoke before we spend minutes building: the frozen exe can't honour
+      # --info (it launches the GUI), so we run the *module* form here.
+      - name: Smoke (tests + module --info)
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          .venv\Scripts\python.exe -m pytest -q
+          .venv\Scripts\python.exe -m sensorchrono --info
+
+      # Bundle a real LabRecorder so the installer is a true one-download. The
+      # zip may nest a subfolder, so we locate LabRecorder.exe and point the
+      # spec's LABRECORDER_DIR at the folder that actually contains it.
+      - name: Download and locate LabRecorder
+        shell: pwsh
+        run: |
+          $url = "https://github.com/labstreaminglayer/App-LabRecorder/releases/download/v1.17.0/LabRecorder-1.17.0-Win_amd64.zip"
+          Invoke-WebRequest -Uri $url -OutFile labrecorder.zip
+          Expand-Archive -Path labrecorder.zip -DestinationPath labrecorder -Force
+          $exe = Get-ChildItem -Path labrecorder -Recurse -Filter LabRecorder.exe | Select-Object -First 1
+          if (-not $exe) { throw "LabRecorder.exe not found in the downloaded zip" }
+          "LABRECORDER_DIR=$($exe.Directory.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build one-folder app (PyInstaller)
+        shell: pwsh
+        run: .\build\build_windows.ps1
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y
+
+      # Compile from the repo root so installer.iss's DistDir="..\dist\SensorChrono"
+      # (relative to build/) resolves to dist\SensorChrono.
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /O"dist\installer" build\installer.iss
+
+      - name: Locate installer
+        id: artifact
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path dist\installer -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw "no installer .exe produced" }
+          "path=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Installer: $($exe.FullName)"
+
+      # Manual run -> downloadable artifact only (no public release).
+      - name: Upload test-build artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SensorChrono-${{ steps.ver.outputs.version }}-setup
+          path: ${{ steps.artifact.outputs.path }}
+
+      # Tag push -> publish the installer on the GitHub Release.
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.artifact.outputs.path }}

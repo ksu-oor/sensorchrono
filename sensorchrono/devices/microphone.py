@@ -1,4 +1,4 @@
-"""Adapter for ``audio_lsl_bridge.py`` (BRIO mic → Audio @ 48 kHz)."""
+"""Adapter for ``sensorchrono/bridges/audio_lsl_bridge.py`` (BRIO mic → Audio @ 48 kHz)."""
 from __future__ import annotations
 
 import re
@@ -10,7 +10,7 @@ from sensorchrono.devices.bridge_adapter import BridgeAdapter, session_tag
 
 class MicrophoneAdapter(BridgeAdapter):
     name = "mic"
-    BRIDGE_SCRIPT = "audio_lsl_bridge.py"
+    BRIDGE_MODULE = "sensorchrono.bridges.audio_lsl_bridge"
     READY_PATTERN = re.compile(r"LSL outlet 'Audio' is live")
 
     def streams(self) -> list[StreamDef]:

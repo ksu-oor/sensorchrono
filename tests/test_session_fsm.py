@@ -179,6 +179,14 @@ class _StopMonitor:
         return LivenessReport("m", ())
 
 
+class _StopLauncher:
+    def __init__(self):
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+
 def test_fail_tears_down_fleet_recorder_monitor(tmp_path):
     adapter, rec, mon = _StopTrackingAdapter(), _StopRecorder(), _StopMonitor()
     c = SessionController(_session(tmp_path), adapters=[adapter], recorder=rec, monitor=mon)
@@ -188,6 +196,20 @@ def test_fail_tears_down_fleet_recorder_monitor(tmp_path):
     c.fail("boom")
     assert c.state == SessionState.ERROR
     assert adapter.stopped and rec.stopped and mon.stopped  # nothing stranded
+
+
+def test_teardown_stops_labrecorder_launcher(tmp_path):
+    # The bundled-LabRecorder launcher must be killed on any exit path, so a
+    # frozen run never leaves an orphaned LabRecorder.exe behind.
+    adapter, rec, launcher = _StopTrackingAdapter(), _StopRecorder(), _StopLauncher()
+    c = SessionController(
+        _session(tmp_path), adapters=[adapter], recorder=rec, labrecorder_launcher=launcher,
+    )
+    c.run_preflight()
+    c.start_staging()
+    c.abort()
+    assert c.state == SessionState.ERROR
+    assert rec.stopped and launcher.stopped
 
 
 def test_abort_routes_through_fail_and_tears_down(tmp_path):

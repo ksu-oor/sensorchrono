@@ -47,6 +47,7 @@ class SessionController:
         *,
         adapters: list[DeviceAdapter] | None = None,
         recorder: Recorder | None = None,
+        labrecorder_launcher=None,
         monitor=None,
         preflight_fn: Callable[[SessionConfig], "preflight_mod.PreflightReport"] | None = None,
         fiducial: FiducialCounter | None = None,
@@ -59,6 +60,10 @@ class SessionController:
 
         self._adapters = adapters
         self._recorder = recorder
+        # Any object with .stop(): the UI starts it before make_recorder() so the
+        # RCS is reachable and gets auto-selected. Killed in _teardown_capture
+        # AFTER recorder.stop() finalises the .xdf. None in dry-run / no bundle.
+        self._labrecorder_launcher = labrecorder_launcher
         self._monitor = monitor
         self._preflight_fn = preflight_fn or preflight_mod.check_all
         self._fiducial = fiducial or FiducialCounter()
@@ -108,6 +113,13 @@ class SessionController:
                 self._recorder.stop()
             except Exception as exc:
                 errors.append(f"recorder.stop: {exc!r}")
+        # Kill LabRecorder only AFTER recorder.stop() above has finalised the
+        # .xdf (an RcsRecorder.stop sends "stop" over the socket first).
+        if self._labrecorder_launcher is not None:
+            try:
+                self._labrecorder_launcher.stop()
+            except Exception as exc:
+                errors.append(f"labrecorder_launcher.stop: {exc!r}")
         if self.supervisor is not None:
             errors.extend(f"{name}.stop: {exc!r}" for name, exc in self.supervisor.stop_all())
         return errors

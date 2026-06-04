@@ -1,7 +1,7 @@
 """sensorchrono — guided multi-modal LSL recording app.
 
-Wraps the proven capture bridges (repo root ``*_lsl_bridge.py``) and the
-post-processing pipeline (``analysis/``) in an orchestration shell that walks
+Wraps the proven capture bridges (``sensorchrono/bridges/*_lsl_bridge.py``) and
+the post-processing pipeline (``analysis/``) in an orchestration shell that walks
 an operator through: select equipment → liveness check → calibrate → record →
 auto post-process → aligned outputs. The hard sync math is unchanged; this
 package is the shell that drives it.
@@ -18,4 +18,4 @@ Run ``python -m sensorchrono`` for an environment/profile summary, and
 ``pytest tests/`` for the current tested surface.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"

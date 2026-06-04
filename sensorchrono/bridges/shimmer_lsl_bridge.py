@@ -4,9 +4,6 @@ import json
 import sys
 import threading
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')  # non-interactive backend, safe across threads
-import matplotlib.pyplot as plt
 import serial
 import struct
 import time
@@ -155,7 +152,7 @@ def wait_until_lsl(target_lsl):
         time.sleep(min(0.05, max(0.001, remaining / 2.0)))
 
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Stream one or two Shimmer devices to LSL.")
     parser.add_argument(
         "mode",
@@ -170,7 +167,7 @@ def parse_args():
                         help="Skip the 'Press Enter' prompt and start recording after a fixed delay. Used for headless runs.")
     parser.add_argument("--start-delay", type=float, default=3.0,
                         help="With --no-prompt, wait this many seconds before recording starts. Default 3.0.")
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def choose_run_mode(mode):
@@ -437,6 +434,10 @@ def stop_device(ser):
 
 
 def save_synchronized(ecg_out, emg_out):
+    import matplotlib
+    matplotlib.use('Agg')  # non-interactive backend, safe across threads
+    import matplotlib.pyplot as plt
+
     t_start = max(ecg_out['lsl_ts'][0], emg_out['lsl_ts'][0])
 
     t_ecg_rel = ecg_out['lsl_ts'] - t_start
@@ -481,6 +482,10 @@ def save_synchronized(ecg_out, emg_out):
 
 
 def save_single_stream(stream_name, stream_out):
+    import matplotlib
+    matplotlib.use('Agg')  # non-interactive backend, safe across threads
+    import matplotlib.pyplot as plt
+
     t_rel = stream_out['lsl_ts'] - stream_out['lsl_ts'][0]
     t_dev_rel = stream_out['device_ts'] - stream_out['device_ts'][0]
 
@@ -527,10 +532,10 @@ def save_single_stream(stream_name, stream_out):
     print(f"Saved {csv_path}")
 
 
-def main():
+def main(argv=None):
     global RECORD_S
 
-    args = parse_args()
+    args = parse_args(argv)
     run_mode = choose_run_mode(args.mode)
     RECORD_S = args.record_seconds
     marker_outlet = create_marker_outlet()

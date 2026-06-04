@@ -1,4 +1,4 @@
-"""Adapter for ``shimmer_lsl_bridge.py`` (Shimmer3 EXG: ECG or EMG).
+"""Adapter for ``sensorchrono/bridges/shimmer_lsl_bridge.py`` (Shimmer3 EXG: ECG or EMG).
 
 Two deadlock traps the adapter MUST avoid for a headless run:
   1. the bridge blocks on ``input()`` unless ``--no-prompt`` is passed, and
@@ -16,7 +16,7 @@ from sensorchrono.devices.bridge_adapter import BridgeAdapter
 
 class ShimmerExgAdapter(BridgeAdapter):
     name = "shimmer_exg"
-    BRIDGE_SCRIPT = "shimmer_lsl_bridge.py"
+    BRIDGE_MODULE = "sensorchrono.bridges.shimmer_lsl_bridge"
     # readiness line: "[COM3] LSL outlet: ShimmerECG @ 256 Hz" (or ShimmerEMG)
     READY_PATTERN = re.compile(r"LSL outlet: ShimmerECG")
 

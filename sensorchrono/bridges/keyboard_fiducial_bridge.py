@@ -69,13 +69,13 @@ def key_to_name(key):
         return "<unprintable>"
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--duration", type=float, default=0.0,
                         help="Auto-exit after N seconds. 0 = run until Ctrl+C.")
     parser.add_argument("--quiet", action="store_true",
                         help="Don't print each keystroke to the console.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     outlet = FiducialOutlet()
     stop_event = threading.Event()

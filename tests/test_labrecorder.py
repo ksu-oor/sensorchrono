@@ -95,6 +95,20 @@ def test_is_available():
     assert not RcsRecorder.is_available("localhost", 1, timeout=0.5)
 
 
+def test_make_recorder_picks_rcs_when_server_up():
+    # Proves the launch -> make_recorder handoff: once the launcher has an RCS
+    # serving, make_recorder auto-selects RcsRecorder over the manual fallback.
+    srv = _FakeRcsServer()
+    try:
+        rec = make_recorder(
+            prefer_rcs=True, rcs_host=srv.host, rcs_port=srv.port,
+            manual_prompt=lambda m: None, manual_confirm=lambda m: True,
+        )
+        assert isinstance(rec, RcsRecorder)
+    finally:
+        srv.close()
+
+
 def test_make_recorder_falls_back_to_manual_when_rcs_down():
     rec = make_recorder(
         prefer_rcs=True, rcs_host="localhost", rcs_port=1,

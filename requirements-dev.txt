@@ -1,0 +1,5 @@
+# Test/dev-only tooling. Deliberately separate from requirements.txt so it is
+# NOT pulled into the frozen installer (pytest has no business shipping inside
+# SensorChrono.exe). Install alongside the runtime deps for development/CI:
+#   pip install -r requirements.txt -r requirements-dev.txt
+pytest>=8

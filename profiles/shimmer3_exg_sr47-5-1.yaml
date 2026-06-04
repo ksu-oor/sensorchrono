@@ -21,7 +21,7 @@ bridges:
       - {name: ShimmerMarkers, type: Markers, channels: 1, rate_hz: 0}
       - {name: ShimmerDiagnostics_ECG, type: Diagnostics, channels: 5, rate_hz: 1}
   accel:
-    module: shimmer_accel_bridge  # path: ./shimmer_accel_bridge.py (EXP-03)
+    module: null   # future seam — no accel bridge implemented (see contract.SHIMMER_ACCEL)
     defaults:
       sampling_rate_hz: 256
       sensor: low_noise           # low_noise | wide_range

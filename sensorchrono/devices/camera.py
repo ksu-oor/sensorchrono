@@ -1,4 +1,4 @@
-"""Adapter for ``video_lsl_bridge.py`` (Logitech BRIO → VideoFrames + .mp4)."""
+"""Adapter for ``sensorchrono/bridges/video_lsl_bridge.py`` (Logitech BRIO → VideoFrames + .mp4)."""
 from __future__ import annotations
 
 import re
@@ -11,7 +11,7 @@ from sensorchrono.devices.bridge_adapter import BridgeAdapter, session_tag
 
 class CameraAdapter(BridgeAdapter):
     name = "camera"
-    BRIDGE_SCRIPT = "video_lsl_bridge.py"
+    BRIDGE_MODULE = "sensorchrono.bridges.video_lsl_bridge"
     READY_PATTERN = re.compile(r"LSL outlet 'VideoFrames' is live")
 
     def streams(self) -> list[StreamDef]:
