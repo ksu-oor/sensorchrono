@@ -2,6 +2,8 @@
 the headless-Shimmer guard, and a stub-launch lifecycle (no hardware)."""
 from __future__ import annotations
 
+import sys
+
 from sensorchrono.config import DeviceBindings, SessionConfig
 from sensorchrono.contract import StreamName
 from sensorchrono.devices.base import DeviceAdapter
@@ -56,6 +58,25 @@ def test_camera_argv_and_mp4_path(tmp_path):
     assert tag == "p01_s1_rest"
 
 
+def test_build_argv_dev_uses_dash_m(tmp_path):
+    # Dev: run the bridge as an importable module, NOT a loose script path.
+    argv = CameraAdapter().build_argv(_session(tmp_path, bindings=DeviceBindings(camera_index=0)))
+    assert argv[:3] == [sys.executable, "-m", "sensorchrono.bridges.video_lsl_bridge"]
+    assert "--out-dir" in argv
+
+
+def test_build_argv_frozen_uses_run_bridge(tmp_path, monkeypatch):
+    # Frozen: sys.executable is the bundled exe (no `-m`), so we re-invoke it
+    # with `--run-bridge <module>` that the frozen entry dispatches on. Mirrors
+    # postprocess_runner's `--run-postprocess` handling.
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    argv = CameraAdapter(python="SensorChrono.exe").build_argv(
+        _session(tmp_path, bindings=DeviceBindings(camera_index=0))
+    )
+    assert argv[:3] == ["SensorChrono.exe", "--run-bridge", "sensorchrono.bridges.video_lsl_bridge"]
+    assert "--out-dir" in argv
+
+
 def test_streams_are_canonical():
     assert {s.name for s in ShimmerExgAdapter().streams()} == {
         StreamName.SHIMMER_ECG, StreamName.SHIMMER_DIAGNOSTICS_ECG,
@@ -76,8 +97,11 @@ def test_default_real_fleet():
     assert all(isinstance(a, DeviceAdapter) for a in fleet)
 
 
-def test_adapter_launch_ready_stop_with_stub(tmp_path):
-    # A stub that mimics the video bridge's readiness line, then idles.
+def test_adapter_launch_ready_stop_with_stub(tmp_path, monkeypatch):
+    # A stub MODULE that mimics the video bridge's readiness line, then idles.
+    # Bridges are spawned as `python -m <module>` now, so the stub must be
+    # importable by the *child* process: put tmp_path on PYTHONPATH (inherited
+    # by the subprocess) rather than only the parent's in-memory sys.path.
     stub = tmp_path / "stub_bridge.py"
     stub.write_text(
         "import sys, time\n"
@@ -85,7 +109,8 @@ def test_adapter_launch_ready_stop_with_stub(tmp_path):
         "sys.stdout.flush()\n"
         "time.sleep(30)\n"
     )
-    a = CameraAdapter(script_path=stub)
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    a = CameraAdapter(bridge_module="stub_bridge")
     a.launch(_session(tmp_path, bindings=DeviceBindings(camera_index=0)))
     try:
         r = a.is_ready(5.0)

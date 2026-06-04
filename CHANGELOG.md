@@ -1,5 +1,56 @@
 # LSL Sync Lab Notebook
 
+## 2026-06-04
+
+### Make SensorChrono the product: clean repo + working frozen capture + release pipeline
+
+Restructured the repo so **SensorChrono** is the headline product, fixed real
+capture in the frozen build, bundled LabRecorder, and added a CI release pipeline.
+
+- **Frozen capture now works (was silently broken).** The adapters spawned
+  `[sys.executable, "x_lsl_bridge.py", ...]`; in a PyInstaller exe `sys.executable`
+  is `SensorChrono.exe`, so that just relaunched the GUI. Moved the 4 bridges into
+  `sensorchrono/bridges/` (run by **module name**), made each `main(argv)`-callable,
+  and taught `bridge_adapter.build_argv` the dev (`-m`) vs frozen (`--run-bridge`)
+  split — mirroring the existing `--run-postprocess` self-dispatch. New `--run-bridge`
+  branch in `build/sensorchrono_main.py`. Lazy matplotlib in the shimmer bridge so it
+  stays out of the frozen bundle (`excludes=["matplotlib"]`). Spec drops the loose
+  bridge bundling (now collected as package submodules).
+- **Bundled LabRecorder, auto-launched.** New `orchestration/labrecorder_launcher.py`:
+  copies the bundled LabRecorder to a writable per-session dir, writes a `Config.cfg`
+  enabling the RCS on `localhost:22345` (keys verified against App-LabRecorder's
+  `LabRecorder.cfg`: `RCSEnabled` / `RCSPort` / `StudyRoot`), launches it, and polls
+  until RCS is reachable. Wired into `main_window._make_recorder` (RCS auto-selected
+  by `make_recorder`); torn down in `_teardown_capture` **after** `recorder.stop()`
+  finalises the `.xdf`. Manual fallback fully preserved.
+- **Deleted dead weight.** Removed ~30 legacy files (loose root scripts incl.
+  `run_lsl_streams.py`/`plot_xdf_streams.py`/EMOTIV bridge, all of `launchers/`, the
+  `analysis/exp0*` experiment analyzers + demo + `exp06_checkin.py`, `outputs/`,
+  `RESUME.md`). `analysis/` is now just the pipeline (`postprocess` + 3 modules).
+- **Release pipeline + versioning.** `.github/workflows/release.yml` (Windows: tag
+  `v*.*.*` or `workflow_dispatch`; stamps version into `__init__.py` + `installer.iss`,
+  builds, bundles LabRecorder, compiles the installer via Inno Setup, publishes to
+  Releases) and `ci.yml` (Linux: `pytest -q` + `python -m sensorchrono --info`).
+  Reconciled `__version__` 0.1.0 → **1.0.0** to match the installer. Added
+  `requirements-dev.txt` (pytest) so test tooling stays out of the frozen bundle.
+- **Docs.** README is now a SensorChrono-first product page (download, quick start,
+  run-from-source, hardware matrix, layout, licensing). Hardware reference moved to
+  `docs/HARDWARE.md`. CLAUDE.md corrected (the package/build/pytest now exist; bridges
+  moved). `.gitignore` covers the LabRecorder download artifacts.
+
+### Tests
+Added: dev/frozen `build_argv` assertions + module-based stub launch
+(`test_real_adapters`), `--run-bridge` dispatch (`test_sensorchrono_main`),
+launcher discovery/poll/config/launch-stop (`test_labrecorder_launcher`),
+RCS-handoff (`test_labrecorder`), launcher teardown (`test_session_fsm`).
+**122 passed, 2 skipped** on the bare macOS box.
+
+### Next
+Phase-5 Windows validation: cut `v1.0.0-rc1` via `workflow_dispatch`, install the
+artifact, run one real session, confirm the bundled LabRecorder records an
+`.xdf`/`.mp4`, `--run-bridge` capture works, RCS `Config.cfg` keys are honoured by
+the 1.17.0 build, and Stage-5 residual ≈ 0 ms. Then tag `v1.0.0`.
+
 ## 2026-06-02
 
 ### Setup completed

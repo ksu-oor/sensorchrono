@@ -34,7 +34,7 @@ def find_input_device(name_hint=None):
     return default_input, devs[default_input]
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default=None,
                         help="Input device name substring (e.g. 'BRIO')")
@@ -45,7 +45,7 @@ def main():
     parser.add_argument("--duration", type=float, default=0.0)
     parser.add_argument("--tag", default="exp03")
     parser.add_argument("--out-dir", default=r"C:\Users\ngoldbla\Desktop\LSL_data")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

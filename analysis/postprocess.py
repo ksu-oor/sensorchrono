@@ -1,6 +1,6 @@
 """End-to-end post-processing pipeline.
 
-Five stages, per outputs/post_processing_design.md:
+Five stages:
 
   Stage 1 - Dejitter regular-rate streams (pyxdf dejitter_timestamps=True)
   Stage 2 - Apply Shimmer clock model to ShimmerECG timestamps

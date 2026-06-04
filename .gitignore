@@ -7,10 +7,13 @@
 *.xdf
 *.csv
 *.png
+!docs/img/*.png
 *.jpg
 *.jpeg
 *.pdf
 LabRecorder-*/
+labrecorder/
+labrecorder.zip
 
 # Python cache/build artifacts
 __pycache__/
@@ -21,6 +24,7 @@ __pycache__/
 # PyInstaller work dirs (build/<spec>/, build/__pycache__/) — keep build/ source files
 build/*/
 dist/
+*.spec~
 *.egg-info/
 .venv/
 venv/

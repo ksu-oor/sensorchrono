@@ -35,8 +35,8 @@ gives drift-corrected LSL timestamps deterministically reproducible from
 the diagnostics stream alone, with no external fiducial required.
 
 Validated across three independent runs (EXP-00, EXP-01, EXP-06) where
-drift values agreed to within 6 ppm (31.1 / 37.4 / 35.8). See
-`outputs/exp06_hour_drift_design.md` + CHANGELOG 2026-06-03 entry.
+drift values agreed to within 6 ppm (31.1 / 37.4 / 35.8); see the
+CHANGELOG 2026-06-03 entry for the drift-fit validation.
 """
 from __future__ import annotations
 

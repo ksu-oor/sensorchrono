@@ -31,7 +31,7 @@ class BridgeSpec:
     """How to launch + recognise one capture-bridge subprocess."""
 
     name: str  # device id, e.g. "camera"
-    argv: list[str]  # full command, e.g. [python, "video_lsl_bridge.py", "--duration", "90", ...]
+    argv: list[str]  # full command, e.g. [python, "-m", "sensorchrono.bridges.video_lsl_bridge", "--duration", "90", ...]
     ready_pattern: re.Pattern[str]  # matches the bridge's stdout readiness line
     cwd: Path | None = None
 

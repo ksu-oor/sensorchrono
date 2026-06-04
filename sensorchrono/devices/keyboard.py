@@ -1,4 +1,4 @@
-"""Adapter for ``keyboard_fiducial_bridge.py`` (USB HID keystroke → marker).
+"""Adapter for ``sensorchrono/bridges/keyboard_fiducial_bridge.py`` (USB HID keystroke → marker).
 
 On Windows ``pynput``'s listener is a global OS hook, so it captures the
 calibration spacebar taps without needing window focus.
@@ -14,7 +14,7 @@ from sensorchrono.devices.bridge_adapter import BridgeAdapter
 
 class KeyboardAdapter(BridgeAdapter):
     name = "keyboard"
-    BRIDGE_SCRIPT = "keyboard_fiducial_bridge.py"
+    BRIDGE_MODULE = "sensorchrono.bridges.keyboard_fiducial_bridge"
     READY_PATTERN = re.compile(r"LSL outlet 'KeyboardFiducial' is live")
 
     def streams(self) -> list[StreamDef]:

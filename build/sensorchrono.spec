@@ -20,14 +20,9 @@ ROOT = Path(os.environ.get("SENSORCHRONO_ROOT", os.path.abspath(os.path.join(SPE
 datas = []
 # committed device profiles (profiles.py resolves them relative to the package)
 datas += [(str(p), "profiles") for p in (ROOT / "profiles").glob("*.yaml")]
-# the capture bridges — the app spawns these as subprocesses at the repo root
-for bridge in (
-    "shimmer_lsl_bridge.py", "video_lsl_bridge.py",
-    "audio_lsl_bridge.py", "keyboard_fiducial_bridge.py",
-):
-    bp = ROOT / bridge
-    if bp.exists():
-        datas.append((str(bp), "."))
+# the capture bridges now live in sensorchrono/bridges/ and are pulled in as
+# package submodules by collect_submodules("sensorchrono") below — the frozen
+# exe runs them via ``--run-bridge``, so there are no loose files to bundle.
 # the analysis package source (post-process subprocess imports analysis.*)
 if (ROOT / "analysis").exists():
     for py in (ROOT / "analysis").glob("*.py"):

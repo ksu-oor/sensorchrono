@@ -90,7 +90,7 @@ def create_outlet(target_fps):
     return outlet
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", type=int, default=DEFAULTS["device"])
     parser.add_argument("--width", type=int, default=DEFAULTS["width"])
@@ -104,7 +104,7 @@ def main():
     parser.add_argument("--tag", default="exp02")
     parser.add_argument("--preview", action="store_true",
                         help="Show a low-rate preview window (consumes CPU).")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

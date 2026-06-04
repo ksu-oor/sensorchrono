@@ -1,6 +1,6 @@
 """Base class for adapters that drive a real capture-bridge subprocess.
 
-Each concrete adapter (shimmer/camera/mic/keyboard) sets its bridge script,
+Each concrete adapter (shimmer/camera/mic/keyboard) sets its bridge module,
 readiness regex, and the flags it builds from a session, then this base wraps a
 :class:`~sensorchrono.orchestration.supervisor.BridgeProcess` for spawn /
 readiness / teardown.
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import re
 import sys
-from pathlib import Path
 
 from sensorchrono.devices.base import (
     DeviceAdapter,
@@ -24,9 +23,6 @@ from sensorchrono.devices.base import (
     StreamLiveness,
 )
 from sensorchrono.orchestration.supervisor import BridgeProcess, BridgeSpec
-
-# bridges live at the repo root: sensorchrono/devices/bridge_adapter.py -> parents[2]
-REPO_ROOT = Path(__file__).resolve().parents[2]
 
 #: bridges run this much longer than the recording window so they outlast it
 #: (staging + ~30 s calibration + the recording itself, plus margin)
@@ -40,19 +36,19 @@ def session_tag(session) -> str:
 
 
 class BridgeAdapter(DeviceAdapter):
-    BRIDGE_SCRIPT: str = ""  # subclass sets, e.g. "video_lsl_bridge.py"
+    #: subclass sets the importable bridge module, e.g.
+    #: "sensorchrono.bridges.video_lsl_bridge"
+    BRIDGE_MODULE: str = ""
     READY_PATTERN: re.Pattern[str] = re.compile(r"is live")  # subclass overrides
 
     def __init__(
         self,
         *,
         python: str = sys.executable,
-        script_path: str | Path | None = None,
-        repo_root: Path = REPO_ROOT,
+        bridge_module: str | None = None,
     ) -> None:
         self._python = python
-        self._repo_root = Path(repo_root)
-        self._script = Path(script_path) if script_path else self._repo_root / self.BRIDGE_SCRIPT
+        self._bridge_module = bridge_module or self.BRIDGE_MODULE
         self._proc: BridgeProcess | None = None
 
     # -- subclasses implement ----------------------------------------------
@@ -67,10 +63,24 @@ class BridgeAdapter(DeviceAdapter):
 
     # -- shared lifecycle ---------------------------------------------------
     def build_argv(self, session) -> list[str]:
-        return [self._python, str(self._script), *self._bridge_args(session)]
+        """Construct the subprocess argv (pure — unit-testable).
+
+        Mirrors ``postprocess_runner.build_command``: in a frozen PyInstaller
+        build ``sys.executable`` is the bundled exe, not a Python interpreter,
+        so ``-m module`` can't work — instead we re-invoke the exe with a
+        ``--run-bridge <module>`` flag that the frozen entry dispatches to
+        ``<module>.main(argv)``.
+        """
+        args = self._bridge_args(session)
+        if getattr(sys, "frozen", False):
+            return [self._python, "--run-bridge", self._bridge_module, *args]
+        return [self._python, "-m", self._bridge_module, *args]
 
     def launch(self, session) -> None:
-        spec = BridgeSpec(self.name, self.build_argv(session), self._ready_pattern(), cwd=self._repo_root)
+        # cwd=None: the bridge is resolved by module name (dev ``-m`` finds the
+        # package from the repo-root cwd the app inherits; frozen ``--run-bridge``
+        # doesn't use cwd) and takes an explicit ``--out-dir``, so cwd is moot.
+        spec = BridgeSpec(self.name, self.build_argv(session), self._ready_pattern(), cwd=None)
         self._proc = BridgeProcess(spec)
         self._proc.start()
 
