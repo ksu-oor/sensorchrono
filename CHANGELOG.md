@@ -456,7 +456,41 @@ bridges and `analysis/` are untouched. Worked on macOS (Python 3.14).
 
 ### Next
 - Phase 1: orchestration core (`supervisor`, `lsl_monitor`, `preflight`,
-  `labrecorder` RCS+fallbacks, `postprocess_runner`, `session` FSM) — all
-  testable against real synthetic LSL on macOS.
-- Open: synthetic ECG morphology in `simulated.synth_ecg` left as a
-  placeholder sine for the operator to flesh out.
+  `labrecorder` RCS+fallbacks, `postprocess_runner`, `session` FSM).
+
+### SensorChrono Phase 1 (orchestration core) landed
+The headless, framework-agnostic engine that drives the wizard. All of it
+validated on macOS — including against *real* LSL traffic (pylsl works here).
+
+- `events.py`: tiny `Signal` (subscribe/emit) — the FSM emits these, NOT Qt
+  signals, so the whole layer is importable + testable with no PySide6.
+- `supervisor.py`: `BridgeProcess` (subprocess spawn + per-bridge stdout
+  readiness regex + terminate→kill teardown; reused by Phase-2 adapters) and
+  `Supervisor` (fleet lifecycle over DeviceAdapter list, shared-deadline ready).
+- `lsl_monitor.py`: pure `compute_stream_liveness()` (rate/gap/channel verdict)
+  + `LslMonitor` background poller. **Bug found by end-to-end and fixed:**
+  `pull_chunk` caps at 1024 samples/call, so the monitor must drain the inlet
+  in a loop or it under-counts a 48 kHz stream and falsely fails Audio.
+- `fiducial_live.py`: `FiducialCounter` (refractory-gated clean-tap acceptance,
+  regularity CV, calibrated threshold) + live KeyboardFiducial LSL source.
+- `preflight.py`: serial/camera/mic/LabRecorder checks, dry-run skip path,
+  required-blocker vs warning aggregation.
+- `labrecorder.py`: `Recorder` ABC + RcsRecorder (TCP 22345 update/select all/
+  filename/start/stop) + CliRecorder + ManualRecorder + `make_recorder()`
+  fallback factory. `select all` structurally prevents under-selecting streams.
+- `postprocess_runner.py`: subprocess wrapper that is its OWN `python -m` entry
+  importing `analysis.postprocess.run` with `profile_lag_ms` — gets crash
+  isolation + the profile fallback while leaving analysis/ untouched.
+- `session.py`: `SessionController` FSM (SETUP→PREFLIGHT→LIVENESS→CALIBRATE→
+  RECORD→POSTPROCESS→DONE +ERROR), guarded transitions, injectable
+  collaborators, Signal events.
+
+Verified: 92 pytest tests (+1 venv-only LSL integration) green on macOS; a
+full wizard run drove the simulated fleet's *real* LSL outlets through the
+LslMonitor staging gate to DONE.
+
+Filled in `simulated.synth_ecg` with real P-QRS-T (Gaussian-sum) morphology.
+
+### Next
+- Phase 2: real device adapters (drive shimmer/video/audio/keyboard bridges
+  via `BridgeProcess`; Shimmer adapter always `--no-prompt`).
