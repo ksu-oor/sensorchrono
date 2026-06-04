@@ -1,7 +1,26 @@
 # Resume Guide
 
-**Last session ended:** 2026-06-03 (evening)
-**Status:** **Sync Suite v1 shipped.** Full end-to-end pipeline works:
+**Last session ended:** 2026-06-04
+**Status:** **Sync Suite v1 shipped** + **SensorChrono Phase 0 (app foundation) landed.**
+
+> **SensorChrono app is code-complete (Phases 0–4 + docs).** A guided PySide6
+> desktop wizard under `sensorchrono/` wraps the proven capture bridges +
+> `analysis/` (both untouched): select equipment → preflight → staging liveness
+> gate → calibration → record → auto post-process → aligned outputs. Run it with
+> `python -m sensorchrono` (GUI) or `--info`. **109 tests** green under the venv
+> (101 passed + 2 skipped on the bare box). A full wizard run drove real LSL streams to
+> DONE on macOS; the PyInstaller frozen build boots. See `CHANGELOG.md`
+> 2026-06-04 and `docs/`.
+>
+> **Remaining for v1.0.0: Phase-5 Windows hardware bring-up** (the only thing
+> not doable on this dev box). Follow the runbook + acceptance checklist in
+> `docs/SETUP_GUIDE.md`, then tag `v1.0.0`. Do NOT tag before it passes.
+>
+> Dev env: one gitignored `.venv` (Python 3.14) has pylsl (liblsl 117) +
+> PySide6 6.11 + pyqtgraph. `PYTHONPATH=. .venv/bin/python -m pytest` runs the
+> LSL+GUI integration tests; system `python3 -m pytest` runs the rest.
+
+The Sync Suite pipeline (unchanged, still the analysis engine the app drives):
 
   1. `launchers/launch_calibrated_recording.bat` opens LabRecorder + 4 bridges with in-situ calibration protocol
   2. `analysis/recording_audit.py` produces one-command per-recording quality reports
@@ -32,7 +51,7 @@ Read this first when resuming. Detailed history is in `CHANGELOG.md`. Strategic 
 | **End-to-end 5-stage post-processing pipeline** | `analysis/postprocess.py` | **all 5 stages OK on EXP-06, residual 0.0 ms** |
 | **Calibrated-recording launcher** | `launchers/launch_calibrated_recording.bat` | **canonical one-click rig with calibration protocol** |
 | Per-rig device profiles | `profiles/*.yaml` | Shimmer profile has measured `drift_ppm_observed` from 3 runs |
-| `sensorchrono/` package skeleton | empty `__init__.py` in subdirs | still placeholder for v1 migration |
+| **SensorChrono app — Phase 0 foundation** | `sensorchrono/{contract,config,profiles,devices/}` | **57 pytest tests green (macOS, hardware-free); real-LSL dry-run round-trip verified** |
 
 ## What doesn't work / open
 

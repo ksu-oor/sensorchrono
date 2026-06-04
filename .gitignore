@@ -18,7 +18,8 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-build/
+# PyInstaller work dirs (build/<spec>/, build/__pycache__/) — keep build/ source files
+build/*/
 dist/
 *.egg-info/
 .venv/

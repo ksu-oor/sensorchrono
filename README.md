@@ -3,6 +3,12 @@
 Stream ECG (and EMG) data from a Shimmer device to Lab Streaming Layer (LSL), record it with Lab Recorder, **and**
 produce drift-corrected, lag-calibrated, audit-certified multi-modal datasets in one command.
 
+> **New: SensorChrono — a guided desktop app** that wraps the bridges + analysis below in an idiot-proof
+> wizard (select equipment → liveness check → calibrate → record → auto post-process). Run `python -m sensorchrono`
+> (GUI) or `python -m sensorchrono --info`. See **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** (operators),
+> **[docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md)** (admins), and **[build/PACKAGING.md](build/PACKAGING.md)** (Windows installer).
+> It drives the existing bridges/analysis unchanged. Code-complete; pending Phase-5 hardware sign-off before v1.0.0.
+
 ---
 
 ## Sync Suite — what this gives you, and what it does not

@@ -1,19 +1,21 @@
-"""sensorchrono — multi-modal sync suite for LSL.
+"""sensorchrono — guided multi-modal LSL recording app.
 
-See outputs/PRD_lsl_sync_suite.md (in the repo root) for the full design.
+Wraps the proven capture bridges (repo root ``*_lsl_bridge.py``) and the
+post-processing pipeline (``analysis/``) in an orchestration shell that walks
+an operator through: select equipment → liveness check → calibrate → record →
+auto post-process → aligned outputs. The hard sync math is unchanged; this
+package is the shell that drives it.
 
-Layout:
-    bridges/       device-specific LSL producers (shimmer_exg, shimmer_accel,
-                   video, audio, keyboard, emotiv)
-    fiducials/     producers of timed reference events (audio_pulse,
-                   keyboard_event, led_flash)
-    detectors/     consumers that find fiducial events in recorded streams
-                   (audio_onset, accel_onset, frame_diff)
-    postprocess/   dejitter, drift correct, lag subtract, MP4 remux, validate
+Layout (built across phases — see the plan):
+    contract.py        canonical LSL stream-name constants (single source of truth)
+    config.py          SessionConfig + device bindings + config.yaml round-trip
+    profiles.py        load profiles/*.yaml -> fallback lags + bridge defaults
+    devices/           DeviceAdapter ABC + real bridge drivers + simulated (dry-run)
+    orchestration/     supervisor, lsl_monitor, preflight, labrecorder, session FSM  (Phase 1)
+    ui/                PySide6 wizard pages + live video/waveform widgets          (Phase 3)
 
-Each item above corresponds to a top-level script in the repo today
-(shimmer_lsl_bridge.py, video_lsl_bridge.py, etc.). Those scripts will be
-incrementally migrated into this package as the v1 MVP comes together.
+Run ``python -m sensorchrono`` for an environment/profile summary, and
+``pytest tests/`` for the current tested surface.
 """
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"

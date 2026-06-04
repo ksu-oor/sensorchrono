@@ -402,3 +402,199 @@ Closed the four gaps left at end of afternoon session:
   use cases.
 - sensorchrono package migration still pending.
 - Hour-scale audio drift uncertified.
+
+## 2026-06-04
+
+### SensorChrono productization — Phase 0 (foundation) landed
+Began wrapping the proven capture + analysis tiers in a guided desktop app
+(`sensorchrono/` package). Phase 0 is hardware-free foundation; capture
+bridges and `analysis/` are untouched. Worked on macOS (Python 3.14).
+
+1. **Plan fact-checked against the repo first (7-agent sweep).** Several
+   load-bearing plan assumptions were wrong and corrected before coding:
+   the video bridge uses `--out-dir`+`--tag` (not `--mp4`); `unified.parquet`
+   is never written (v1 consumes the per-stream CSVs/JSON instead — decided);
+   `postprocess.run()` takes a `Path` + keyword-only args; bridge readiness
+   strings differ per bridge (Shimmer is the odd one out). All 7 LSL stream
+   names verified to match producer↔consumer exactly.
+
+2. **Foundation modules:** `contract.py` (canonical `StreamName` StrEnum +
+   `StreamSpec` registry — single source of truth), `devices/base.py`
+   (`DeviceAdapter` ABC; `launch()->None` so sim + real adapters share it),
+   `profiles.py` (pyyaml loader; maps descriptive lag keys → canonical names,
+   Audio 46.5 ms / Video 1.35 ms / ECG None), `config.py` (`SessionConfig`
+   + all-errors validation + `config.yaml` round-trip), `devices/simulated.py`
+   (synthetic adapters; lazy `pylsl`; pure numpy `synth_*` generators).
+
+3. **First pytest suite (57 tests, hardware-free).** Was no test framework
+   before. `pyproject.toml` wires pytest (`pythonpath=["."]`).
+
+4. **Adversarial self-review (32-agent workflow) → 28 findings folded in.**
+   Notably: contract had VideoFrames=1ch (real bridge emits 2 — fixed +
+   cross-tier consistency test); `validate()` secretly `mkdir`'d (now a pure
+   predicate); the dry-run liveness gate could report "live" after its outlet
+   thread died (now consults thread health + surfaces the error); `config`
+   load now rejects a missing `dry_run` (reproducibility) and unknown keys.
+
+5. **pylsl viability on macOS confirmed.** `pip install pylsl` ships a working
+   liblsl 117 wheel on Python 3.14; a `SimulatedShimmerEXG` round-trip
+   resolved real `ShimmerECG`/`Audio` outlets with data flowing. → Phase 1
+   orchestration (supervisor/lsl_monitor) can be validated against *real* LSL
+   on macOS; Windows is reserved for actual hardware.
+
+### Files added
+- `sensorchrono/{contract,config,profiles,__main__}.py`
+- `sensorchrono/devices/{__init__,base,simulated}.py`
+- `tests/{test_contract,test_profiles,test_config,test_simulated,test_base,test_main,test_review_fixes}.py`
+- `pyproject.toml`
+
+### Files updated
+- `requirements.txt` (added pyyaml, PySide6, pyqtgraph, opencv-python,
+  sounddevice, pynput, pyinstaller; grouped runtime/gui/dev)
+- `sensorchrono/__init__.py` (docstring → actual plan layout)
+- `CHANGELOG.md`, `RESUME.md`
+
+### Next
+- Phase 1: orchestration core (`supervisor`, `lsl_monitor`, `preflight`,
+  `labrecorder` RCS+fallbacks, `postprocess_runner`, `session` FSM).
+
+### SensorChrono Phase 1 (orchestration core) landed
+The headless, framework-agnostic engine that drives the wizard. All of it
+validated on macOS — including against *real* LSL traffic (pylsl works here).
+
+- `events.py`: tiny `Signal` (subscribe/emit) — the FSM emits these, NOT Qt
+  signals, so the whole layer is importable + testable with no PySide6.
+- `supervisor.py`: `BridgeProcess` (subprocess spawn + per-bridge stdout
+  readiness regex + terminate→kill teardown; reused by Phase-2 adapters) and
+  `Supervisor` (fleet lifecycle over DeviceAdapter list, shared-deadline ready).
+- `lsl_monitor.py`: pure `compute_stream_liveness()` (rate/gap/channel verdict)
+  + `LslMonitor` background poller. **Bug found by end-to-end and fixed:**
+  `pull_chunk` caps at 1024 samples/call, so the monitor must drain the inlet
+  in a loop or it under-counts a 48 kHz stream and falsely fails Audio.
+- `fiducial_live.py`: `FiducialCounter` (refractory-gated clean-tap acceptance,
+  regularity CV, calibrated threshold) + live KeyboardFiducial LSL source.
+- `preflight.py`: serial/camera/mic/LabRecorder checks, dry-run skip path,
+  required-blocker vs warning aggregation.
+- `labrecorder.py`: `Recorder` ABC + RcsRecorder (TCP 22345 update/select all/
+  filename/start/stop) + CliRecorder + ManualRecorder + `make_recorder()`
+  fallback factory. `select all` structurally prevents under-selecting streams.
+- `postprocess_runner.py`: subprocess wrapper that is its OWN `python -m` entry
+  importing `analysis.postprocess.run` with `profile_lag_ms` — gets crash
+  isolation + the profile fallback while leaving analysis/ untouched.
+- `session.py`: `SessionController` FSM (SETUP→PREFLIGHT→LIVENESS→CALIBRATE→
+  RECORD→POSTPROCESS→DONE +ERROR), guarded transitions, injectable
+  collaborators, Signal events.
+
+Verified: 92 pytest tests (+1 venv-only LSL integration) green on macOS; a
+full wizard run drove the simulated fleet's *real* LSL outlets through the
+LslMonitor staging gate to DONE.
+
+Filled in `simulated.synth_ecg` with real P-QRS-T (Gaussian-sum) morphology.
+
+### SensorChrono Phase 2 (real device adapters) landed
+Adapters that drive the actual bridges as subprocesses via `BridgeProcess`.
+
+- `devices/bridge_adapter.py`: `BridgeAdapter` base (build argv → spawn →
+  readiness → teardown; process-health liveness, real rates come from the LSL
+  monitor) + `default_real_fleet()`.
+- `devices/shimmer_exg.py`: defuses BOTH Shimmer deadlock traps — passes the
+  positional `mode` ("ecg") AND `--no-prompt` (tested). ECG→[ShimmerECG,
+  ShimmerDiagnostics_ECG], EMG mode supported.
+- `devices/camera.py`: drives video bridge via `--out-dir`+`--tag` (NOT the
+  non-existent `--mp4`); exposes `mp4_path(session)` for post-processing.
+- `devices/microphone.py`, `devices/keyboard.py`: audio + keyboard bridges.
+- `session._fleet()` real path now builds the real fleet.
+
+Tests assert each adapter's readiness regex matches the bridge's *literal*
+stdout line (the stringly-typed contract), argv correctness, the headless
+guard, and a stub-launch lifecycle end-to-end. 101 tests green on macOS.
+
+### SensorChrono Phase 3 (PySide6 GUI wizard) landed
+The operator-facing shell. PySide6 6.11 + pyqtgraph 0.14 run headless on
+Python 3.14, so the GUI is built AND tested on macOS (offscreen Qt).
+
+- `ui/waveform.py`: pyqtgraph ECG ring-buffer trace (downsampling+clipToView)
+  + audio level meter.
+- `ui/video_preview.py`: QImage→QPixmap preview + synthetic dry-run frames
+  (VideoFrames LSL carries timestamps, not pixels, so preview is separate).
+- `ui/pages.py`: 7 wizard pages (setup/preflight/liveness/calibrate/record/
+  done/error), each dumb — renders state, emits a Qt signal on action.
+- `ui/main_window.py`: QStackedWidget shell wiring pages ↔ SessionController;
+  QTimer-driven liveness refresh + LiveView (pulls ECG/audio off LSL, feeds the
+  staging widgets); spacebar→note_fiducial during calibration.
+- `__main__.py`: `python -m sensorchrono` launches the GUI (`--info` for the
+  text summary / bare-box fallback).
+
+Verified: 109 tests green under the venv (8 offscreen GUI tests added), 101 on
+the bare box (GUI + LSL integration skip). A full wizard run drove
+setup→preflight→staging(green from real LSL)→calibrate(12 fiducials)→record→
+DONE entirely through the GUI, offscreen, on macOS.
+
+Threading note: FSM transitions run on the GUI thread (fine for dry-run; real-
+capture staging/postprocess should move to a worker QThread — Phase 5 polish).
+
+### SensorChrono Phase 4 (packaging) landed
+A PyInstaller one-folder build wrapped in an Inno Setup installer.
+
+- `build/sensorchrono_main.py`: frozen entry that self-dispatches —
+  `--run-postprocess` runs the pipeline (a frozen exe can't do `python -m`),
+  else launches the GUI. `postprocess_runner.build_command()` emits that flag
+  when `sys.frozen`.
+- `build/rthook_pylsl.py`: runtime hook sets `PYLSL_LIB` to the bundled liblsl
+  before the first `import pylsl` (pylsl's hook doesn't auto-bundle it).
+- `build/sensorchrono.spec`: one-folder (one-file breaks Qt plugins); bundles
+  profiles, the capture bridges, analysis/, liblsl (`LIBLSL_PATH`), and an
+  optional LabRecorder (`LABRECORDER_DIR`); `collect_submodules` for the lazy
+  imports.
+- `build/build_windows.ps1`, `build/installer.iss` (Inno Setup), `build/PACKAGING.md`.
+- `.gitignore`: narrowed `build/` → `build/*/` so the spec/scripts are tracked
+  but PyInstaller work dirs aren't.
+
+Validated on macOS: `pyinstaller build/sensorchrono.spec` builds a 125 MB
+one-folder app; liblsl.dylib bundled; the frozen GUI boots offscreen and the
+frozen `--run-postprocess` dispatch runs. Windows-specifics (liblsl.dll,
+LabRecorder.exe, the Inno installer) are documented and need a Windows host.
+
+### SensorChrono Phase 5+6 (docs + release prep) landed
+- `docs/USER_GUIDE.md`: operator run-mode walkthrough of the wizard.
+- `docs/SETUP_GUIDE.md`: admin install/config, the **LabRecorder RCS
+  verification** (`Test-NetConnection localhost -Port 22345`), device-binding
+  setup, and the **Phase-5 Windows hardware bring-up runbook + acceptance
+  checklist** (staging gate blocks until green, `.xdf`+`.mp4` written, Stage-5
+  residual ≈ 0 ms).
+
+**Phase 5 (hardware bring-up) is a documented runbook, NOT executed** — it
+requires the Windows lab machine with real Shimmer/BRIO/keyboard + LabRecorder,
+which isn't available in this dev environment. Everything testable without
+hardware is validated (109 tests green under the venv, 101 + 2 skipped on the
+bare box; full wizard driven against real LSL on macOS; frozen build boots).
+The **v1.0.0 tag is deliberately withheld** until the
+Phase-5 acceptance checklist passes on hardware — the tag asserts
+hardware-validated end-to-end sync.
+
+### Post-build adversarial review (Phases 1–4) → teardown hardening
+A 38-agent review (find → adversarially verify → synthesize) found one coherent
+high-value theme: **the unhappy exit paths leaked resources.** Closing the
+window, aborting, restarting, or a failed staging only stopped the GUI timers —
+the supervisor fleet (bridge subprocesses holding COM/camera/mic), the recorder
+(LabRecorder), and the monitor thread kept running. Fixes:
+
+- `SessionController.fail()` now tears down capture (monitor + recorder + fleet)
+  before going ERROR, so NO failure path can strand resources; `abort()` routes
+  through it; `stop_recording()` uses the shared `_teardown_capture()` and
+  surfaces any stop errors (previously swallowed).
+- New `SessionController.shutdown()` (teardown without state change) for the GUI
+  window-close path.
+- `MainWindow.closeEvent/_abort/_restart` now call the controller's
+  shutdown/abort so closing mid-recording can't orphan bridges/LabRecorder.
+- `LslMonitor._run` loop wrapped in try/except/finally — a monitor-thread crash
+  now publishes a degraded report and closes inlets instead of vanishing.
+- `parse_report()` rejects malformed / non-object JSON with a clear error.
+
+6 regression tests added (teardown-on-fail/abort/shutdown, garbage-JSON,
+close-event). 115 tests green under the venv (106 + 2 skipped bare box).
+
+### Status
+SensorChrono v1 is code-complete and validated end-to-end on macOS (dry-run +
+real LSL), hardened by an adversarial review. Remaining before tagging v1.0.0:
+run the Phase-5 checklist on the Windows rig.

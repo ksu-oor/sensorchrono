@@ -1,0 +1,7 @@
+# Minimal config — this repo is a script/library collection, not a packaged
+# distribution. The only thing declared here is how to run the (new) test
+# suite so `pytest` finds the `sensorchrono` package at the repo root.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
