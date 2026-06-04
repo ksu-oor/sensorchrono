@@ -533,6 +533,29 @@ DONE entirely through the GUI, offscreen, on macOS.
 Threading note: FSM transitions run on the GUI thread (fine for dry-run; real-
 capture staging/postprocess should move to a worker QThread — Phase 5 polish).
 
+### SensorChrono Phase 4 (packaging) landed
+A PyInstaller one-folder build wrapped in an Inno Setup installer.
+
+- `build/sensorchrono_main.py`: frozen entry that self-dispatches —
+  `--run-postprocess` runs the pipeline (a frozen exe can't do `python -m`),
+  else launches the GUI. `postprocess_runner.build_command()` emits that flag
+  when `sys.frozen`.
+- `build/rthook_pylsl.py`: runtime hook sets `PYLSL_LIB` to the bundled liblsl
+  before the first `import pylsl` (pylsl's hook doesn't auto-bundle it).
+- `build/sensorchrono.spec`: one-folder (one-file breaks Qt plugins); bundles
+  profiles, the capture bridges, analysis/, liblsl (`LIBLSL_PATH`), and an
+  optional LabRecorder (`LABRECORDER_DIR`); `collect_submodules` for the lazy
+  imports.
+- `build/build_windows.ps1`, `build/installer.iss` (Inno Setup), `build/PACKAGING.md`.
+- `.gitignore`: narrowed `build/` → `build/*/` so the spec/scripts are tracked
+  but PyInstaller work dirs aren't.
+
+Validated on macOS: `pyinstaller build/sensorchrono.spec` builds a 125 MB
+one-folder app; liblsl.dylib bundled; the frozen GUI boots offscreen and the
+frozen `--run-postprocess` dispatch runs. Windows-specifics (liblsl.dll,
+LabRecorder.exe, the Inno installer) are documented and need a Windows host.
+
 ### Next
-- Phase 4: packaging (PyInstaller one-folder spec, liblsl + LabRecorder
-  bundling, Inno Setup installer, PACKAGING.md).
+- Phase 5: Windows hardware bring-up (real Shimmer+camera+mic session;
+  verify LabRecorder RCS; confirm .xdf+.mp4 + Stage-5 residual ≈ 0 ms).
+- Phase 6: docs (USER_GUIDE, SETUP_GUIDE) + tag v1.0.0.

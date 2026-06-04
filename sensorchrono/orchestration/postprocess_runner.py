@@ -66,9 +66,17 @@ def build_command(
     skip_parquet: bool = False,
     python: str = sys.executable,
 ) -> list[str]:
-    """Construct the subprocess argv (pure — unit-testable)."""
-    argv = [python, "-m", "sensorchrono.orchestration.postprocess_runner",
-            "--xdf", str(xdf), "--out-dir", str(out_dir)]
+    """Construct the subprocess argv (pure — unit-testable).
+
+    In a frozen PyInstaller build ``sys.executable`` is the bundled exe, not a
+    Python interpreter, so ``-m module`` won't work — instead we re-invoke the
+    exe with a ``--run-postprocess`` flag that the frozen entry dispatches on.
+    """
+    if getattr(sys, "frozen", False):
+        argv = [python, "--run-postprocess", "--xdf", str(xdf), "--out-dir", str(out_dir)]
+    else:
+        argv = [python, "-m", "sensorchrono.orchestration.postprocess_runner",
+                "--xdf", str(xdf), "--out-dir", str(out_dir)]
     if mp4 is not None:
         argv += ["--mp4", str(mp4)]
     if profile_lag_ms:
