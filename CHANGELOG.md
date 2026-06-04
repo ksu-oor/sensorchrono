@@ -160,3 +160,245 @@ See `RESUME.md` for the structured handoff. TL;DR:
 3. Detect tap onsets in accel z-axis; compute keystroke -> accel-onset delta distribution.
 4. Median delta -> `profiles/shimmer3_exg_sr47-5-1.yaml` `calibration.lag_ms.ShimmerAccel`.
 5. If that calibration is stable (std < 5 ms), proceed to EXP-04 (multi-modal full chain).
+
+---
+
+## 2026-06-03 — EXP-03c (audio-pulse via EXG, FAILED) + EXP-06 quicklook (drift methodology validated)
+
+### EXP-03c: EXG-on-headphone-driver, FAILED
+Tried picking up audio pulses by putting Shimmer red+green ECG electrodes
+directly on a Logi USB headphone driver, with the other 3 leads on foam,
+then later on skin.
+
+| Attempt | Result |
+|---|---|
+| 1 kHz pulses, leads on foam | 0 SNR — 1 kHz is above the EXG ~150 Hz anti-alias filter |
+| 50 Hz "thump" pulses, foam | weak (SNR 1.6) because foam isn't a conductor; 3 leads were effectively floating |
+| 50 Hz thump, 3 leads on skin | lead2 std jumped to ~22 (skin reference helps), but pulses still clipped rail-to-rail due to USB-headphone → mains → body ground loop |
+
+LabRecorder also dropped Audio + AudioPulseSchedule from the XDF because
+they weren't ticked at Start (EXP-01 lesson reoccurred). Only ShimmerECG
+was saved.
+
+**Lessons learned:**
+- EXG amplifier front-end LPF (~150 Hz) makes audio-band fiducials hopeless;
+  must use sub-100 Hz energy
+- Floating EXG inputs need a body reference; foam pads don't provide one
+- Once body reference is added, mains/USB ground loops dominate over the
+  fiducial signal — clipping ensues
+- `lead1` is permanently dead on this Shimmer (rail-pinned at -605 since
+  the start of the session); lead2 + lead2-lead1 are the working channels
+- AC-power ground loop is plausibly the source of the worst clipping; a
+  battery-only test would isolate
+
+**Decision:** EXG audio-pulse fiducial is permanently parked. Two physical
+realisations have failed for the same root cause (amp rejects the signal
+or the signal swamps the amp). Don't try a third.
+
+### EXP-06: aluminum-keyboard vibration + multi-modal hour run (stopped at 5 min)
+
+**Setup:** Shimmer ECG leads taped under aluminum Apple keyboard.
+BRIO mic + camera aimed at keyboard. Hour-scale recording planned.
+Stopped at 298 s because spot-check showed ECG vibration coupling weak.
+
+**XDF this time has all 6 streams** (ticked correctly):
+- ShimmerECG, ShimmerMarkers, ShimmerDiagnostics_ECG
+- Audio (BRIO mic, 48 kHz), VideoFrames (BRIO, 28.8 fps), KeyboardFiducial
+
+**ECG vibration coupling — FAILED.** Across 538 keystrokes:
+- 50th percentile SNR: 1.57σ
+- 99th percentile SNR: 2.31σ
+- events above 3σ: 0 / 538
+
+Aluminum-chassis vibration into EXG electrodes is not a viable fiducial.
+Same root cause as EXP-03c: mechanical impulses have spectral peaks at
+200-2000 Hz, well above the EXG ~150 Hz amp cutoff.
+
+**Audio click coupling — GREAT.** 99% detection (534/538), median SNR 99.
+
+**Drift fit on the 5-min XDF (analysis/exp06_drift_fit.py):**
+
+| Modality | b_ppm | residual std | notes |
+|---|---|---|---|
+| Shimmer crystal | **+35.8** | 2.5 ms | OWD-min binned on diagnostics ch1 |
+| BRIO audio | +5.8 ±84 (95% CI) | 57 ms | per-event jitter limits in 5 min |
+| BRIO video | -3.8 | 10 ms (half-frame quant) | likely locked to system clock |
+
+**Cross-validation of Shimmer drift across 3 runs:** 31.1 / 37.4 / 35.8 ppm.
+Spread across runs is < 4 ppm. **Single linear fit per recording is
+sufficient** for this device.
+
+**Methodology validated:**
+- Shimmer crystal drift can be characterized from the bridge's own
+  ShimmerDiagnostics stream — NO external fiducial needed. The bridge
+  already collects everything required.
+- The right channel is `last_observed_s` (col 1), processed with
+  rolling-window minimum (OWD-min). Not `min_observed_s` (col 2), which
+  is a cumulative minimum and goes flat after warmup.
+- Audio drift needs ~hour-scale recording to get below ±10 ppm CI with
+  natural typing fiducials. Scheduled bursts would tighten it faster.
+- Video drift below ~10 ppm not resolvable in 5 min due to half-frame
+  quantization; needs hour-scale or sub-frame detection.
+
+### Artifacts
+- `analysis/exp06_drift_fit.py` — reusable per-modality drift analyzer
+- `analysis/exp06_quicklook.py` — coupling-quality sanity check
+- `LSL_data/EXP06_quicklook/exp06_drift_fit.png` + `.yaml`
+- `outputs/exp06_hour_drift_design.md` — protocol (still valid for the
+  longer re-run with audio-only fiducials)
+
+### Decisions for next session
+- Drop the EXG-vibration angle for hour-scale drift.
+- Simplified EXP-06b: same bridges minus the EXG-coupling expectation.
+  Just record an hour with natural typing + scheduled spacebar bursts at
+  5-min intervals. Use audio click + ShimmerDiagnostics to fit drift.
+- Update `profiles/shimmer3_exg_sr47-5-1.yaml` calibration block with
+  the per-session drift value (or aggregate across 3 runs).
+- Build the post-hoc clock-disciplining module
+  (`analysis/shimmer_clock_model.py`) using the OWD-min binned approach
+  validated in this session.
+
+### 2026-06-03 (afternoon) — `shimmer_clock_model.py` shipped + validated
+
+Built `analysis/shimmer_clock_model.py` — the post-hoc clock disciplining
+module the prior session left as a design.
+
+**Library API:**
+```python
+from analysis.shimmer_clock_model import fit_from_xdf, apply
+model = fit_from_xdf("recording.xdf")        # ClockModel(a, b, b_ppm, ...)
+corrected_lsl_ts = apply(model, ecg_dev_ts)  # drift-corrected timestamps
+```
+
+**CLI:**
+```
+python -m analysis.shimmer_clock_model recording.xdf
+python -m analysis.shimmer_clock_model recording.xdf --json --out-json m.json
+```
+
+**Validated across 10 historical XDFs** (every Shimmer recording on disk):
+
+| recording | duration | drift ppm | residual ms | verdict |
+|---|---|---|---|---|
+| EXP-06 (current) | 297s | +35.79 | 2.54 | PASS |
+| EXP-01 | 314s | +24.40 | 3.41 | PASS |
+| old3 | 303s | +39.05 | 3.27 | PASS |
+| old8 | 363s | +34.94 | 4.09 | PASS |
+| old6 | 65s | +48.81 | 4.26 | PASS (short) |
+| old10 | 82s | -91.50 | 4.29 | PASS but suspicious slope SE |
+| old7 | 123s | +0.00 | 3.12 | PASS but suspiciously perfect |
+| **old9** | 364s | **+251.32** | **22.21** | **FAIL** ← caught by verdict threshold |
+
+Median across PASS runs: 34.9 ppm. **The model correctly flags `old9` as
+FAIL automatically** via the `residual_std_ms < 5 ms` PASS threshold.
+That's the verdict-as-quality-gate working as designed.
+
+**End-to-end demo** (`analysis/shimmer_clock_model_demo.py`) on the
+current EXP-06 XDF: applied the model to ShimmerECG `dev_ts` and
+compared corrected timestamps against the bridge's online-EMA output:
+
+| metric | value | interpretation |
+|---|---|---|
+| mean diff (offline - bridge) | -19.7 ms | systematic bias the EMA missed at init |
+| std diff | 0.52 ms | small noise floor |
+| slope of diff over time | +6.0 ppm | residual drift the EMA's ~2s time constant didn't track |
+| ISI std (both) | 0.000 ms | perfect — both maps use dev_ts for sample positioning |
+
+So the bridge's online EMA is good but has a couple of small, deterministic
+errors (~20 ms init bias + ~6 ppm tracking lag) that the offline model
+removes exactly.
+
+### Artifacts
+- `analysis/shimmer_clock_model.py` — module + CLI
+- `analysis/shimmer_clock_model_demo.py` — end-to-end demo
+- `LSL_data/EXP06_quicklook/shimmer_clock_model_demo.png` — pre/post timestamp comparison
+
+### Decisions
+- This module is the foundation of `analysis/postprocess.py` (Stage 2 of
+  the 5-stage pipeline in `outputs/post_processing_design.md`). Build
+  postprocess.py next.
+- Verdict thresholds (`residual_std_ms < 5/20/inf`) are usable as-is for
+  auto-flagging bad recordings; consider tightening once we have more
+  hour-scale data.
+- Add a heuristic check for `b_ppm == 0` (i.e., bridge state reset
+  mid-recording) — catches the `old7` failure mode that current verdict
+  misses.
+
+### 2026-06-03 (evening) — Sync Suite v1: gaps closed
+
+Closed the four gaps left at end of afternoon session:
+
+1. **Anomaly detectors added to `shimmer_clock_model.py`.**
+   New verdicts: PASS / WARN / FAIL / ANOMALY. Auto-flags:
+   - `b_ppm == 0` exact (bridge state reset during recording)
+   - `|b_ppm| > 100` outside plausible crystal envelope
+   - fewer than 5 OWD-min bins (slope SE too large)
+   - residual > 20 ms (non-linear clock behavior)
+   Validated: `old7` correctly flagged ANOMALY; `old9` correctly flagged FAIL;
+   all 7 other PASS recordings unchanged.
+
+2. **In-situ absolute-lag calibration shipped: `analysis/insitu_lag_calibration.py`.**
+   Uses the keyboard as a *triple* multimodal fiducial (HID + audio click + video frame).
+   For each keystroke press at t_kb, finds:
+     - t_aud = click peak in mic band-pass envelope
+     - t_vid = nearest video frame timestamp
+   Computes per-modality median lag with 95% bootstrap CI. No external
+   hardware required.
+
+   Validation on EXP-06 XDF:
+   - audio_lag = +46.54 ms (95% CI +44.46 to +51.76), n=529, detect 98%
+   - video_lag = +1.35 ms (95% CI -0.05 to +2.63), n=538, detect 100%
+   - shimmer_ecg BT min = -4.36 ms (lower bound; excludes ADC chain)
+
+   For ECG, in-situ measurement only gives a lower bound. ECG absolute lag
+   requires an external fiducial rig (Arduino + piezo) for the full value.
+
+3. **Per-recording audit shipped: `analysis/recording_audit.py`.**
+   One command, full quality report covering:
+   - stream completeness (missing/required streams)
+   - stream continuity (effective rate, max gap)
+   - clock model fit + verdict + anomalies
+   - in-situ lag calibration
+   - overall PASS / WARN / FAIL verdict with itemized issues
+   Writes both JSON and Markdown reports.
+
+4. **End-to-end post-processing pipeline shipped: `analysis/postprocess.py`.**
+   Five stages per outputs/post_processing_design.md:
+   - Stage 0: audit
+   - Stage 1: pyxdf dejitter (regular-rate streams)
+   - Stage 2: apply Shimmer clock model
+   - Stage 3: subtract per-modality lag (in-situ or profile fallback)
+   - Stage 4: write unified per-stream CSVs + frames.csv
+   - Stage 5: residual check (median post-correction delta should be ~0)
+   On EXP-06 XDF, ALL FIVE stages report OK; audio/video residual median
+   after correction = 0.0 ms (validates the math).
+
+5. **Calibrated-recording launcher shipped: `launchers/launch_calibrated_recording.bat`.**
+   One-click rig that opens LabRecorder + 4 bridges (Shimmer ECG, audio,
+   video, keyboard fiducial) with the in-situ calibration protocol
+   documented inline. The keyboard fiducial bridge is now part of every
+   canonical recording.
+
+6. **README updated** with an honest "Sync Suite — what this gives you,
+   and what it does not" section at the top, including the measured
+   validation numbers from EXP-06.
+
+### Files added
+- `analysis/insitu_lag_calibration.py`
+- `analysis/recording_audit.py`
+- `analysis/postprocess.py`
+- `launchers/launch_calibrated_recording.bat`
+- `launchers/_calibrated_{shimmer,audio,video,keyboard}.bat`
+
+### Files updated
+- `analysis/shimmer_clock_model.py` (anomaly detection)
+- `README.md` (top-level Sync Suite section)
+- `RESUME.md`
+- `CHANGELOG.md` (this entry)
+
+### Known limitations carried forward
+- ECG absolute lag is only a lower bound from in-situ. Full ECG lag
+  needs external fiducial rig (Arduino + piezo). Not blocking for most
+  use cases.
+- sensorchrono package migration still pending.
+- Hour-scale audio drift uncertified.

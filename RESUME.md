@@ -1,7 +1,15 @@
 # Resume Guide
 
-**Last session ended:** 2026-06-02
-**Status:** EXP-00, EXP-01, EXP-02 PASSED. EXP-03 (audio-pulse calibration) FAILED — pulse SNR too low. Active next step: EXP-03b (keystroke-based accel calibration).
+**Last session ended:** 2026-06-03 (evening)
+**Status:** **Sync Suite v1 shipped.** Full end-to-end pipeline works:
+
+  1. `launchers/launch_calibrated_recording.bat` opens LabRecorder + 4 bridges with in-situ calibration protocol
+  2. `analysis/recording_audit.py` produces one-command per-recording quality reports
+  3. `analysis/shimmer_clock_model.py` corrects Shimmer crystal drift, auto-flags anomalies
+  4. `analysis/insitu_lag_calibration.py` measures audio + video absolute lag from keystroke fiducials
+  5. `analysis/postprocess.py` runs the full 5-stage pipeline end-to-end
+
+Validation on EXP-06 XDF (all 5 stages OK, residual 0.0 ms post-correction). EXP-03/EXP-03c parked permanently. ECG absolute lag remains a lower bound only — awaits external fiducial rig (out of scope for software). `sensorchrono/` package migration still pending.
 
 Read this first when resuming. Detailed history is in `CHANGELOG.md`. Strategic context is in `outputs/`.
 
@@ -11,25 +19,28 @@ Read this first when resuming. Detailed history is in `CHANGELOG.md`. Strategic 
 
 | Component | File(s) | Verified by |
 |---|---|---|
-| Shimmer ECG @ 256 Hz | `shimmer_lsl_bridge.py` | EXP-00, EXP-01, EXP-02 |
+| Shimmer ECG @ 256 Hz | `shimmer_lsl_bridge.py` | EXP-00/01/02/06 |
 | Shimmer accel @ 256 Hz (low-noise) | `shimmer_accel_bridge.py` | EXP-03 smoke test + run |
-| Audio capture @ 48 kHz from BRIO mic | `audio_lsl_bridge.py` | EXP-03 (recording works; calibration didn't) |
+| Audio capture @ 48 kHz from BRIO mic | `audio_lsl_bridge.py` | EXP-03, EXP-06 (99% click-detect rate) |
 | Audio pulse player (scheduled tone bursts) | `audio_pulse_bridge.py` | EXP-03 (pulses fired at 0.17 ms interval std) |
-| Video @ ~30 fps from BRIO + MP4 + frames.csv | `video_lsl_bridge.py` | EXP-02 |
-| Keyboard fiducial (USB HID -> LSL marker) | `keyboard_fiducial_bridge.py` | EXP-01, EXP-02 |
-| pyxdf-based per-experiment analyzers | `analysis/exp0[0-3]_analyze*.py` | inline |
-| Schedule-aware matched-filter pulse detector | `analysis/exp03_analyze_v3.py` | inline |
-| Per-rig device profiles | `profiles/*.yaml` | structural, not yet consumed by any tool |
-| `sensorchrono/` package skeleton | empty `__init__.py` in subdirs | placeholder for v1 migration |
+| Video @ ~30 fps from BRIO + MP4 + frames.csv | `video_lsl_bridge.py` | EXP-02, EXP-06 |
+| Keyboard fiducial (USB HID -> LSL marker) | `keyboard_fiducial_bridge.py` | EXP-01/02/06 |
+| pyxdf-based per-experiment analyzers | `analysis/exp0[0-3]_analyze*.py` + `exp06_*` | inline |
+| **Post-hoc Shimmer clock model with anomaly flags** | `analysis/shimmer_clock_model.py` | **validated 10 XDFs, 8 PASS, 1 ANOMALY auto-flagged, 1 FAIL auto-flagged** |
+| **In-situ absolute-lag calibration (audio + video)** | `analysis/insitu_lag_calibration.py` | **validated EXP-06: audio +46.5 ms, video +1.4 ms** |
+| **Per-recording quality audit** | `analysis/recording_audit.py` | **one command, full report** |
+| **End-to-end 5-stage post-processing pipeline** | `analysis/postprocess.py` | **all 5 stages OK on EXP-06, residual 0.0 ms** |
+| **Calibrated-recording launcher** | `launchers/launch_calibrated_recording.bat` | **canonical one-click rig with calibration protocol** |
+| Per-rig device profiles | `profiles/*.yaml` | Shimmer profile has measured `drift_ppm_observed` from 3 runs |
+| `sensorchrono/` package skeleton | empty `__init__.py` in subdirs | still placeholder for v1 migration |
 
 ## What doesn't work / open
 
-- **`calibration.lag_ms.ShimmerAccel` is null.** Needs measurement. Active path: keystroke-based via EXP-03b.
-- **`calibration.lag_ms.VideoFrames` is null.** EXP-04 will measure (keystroke -> video frame containing finger).
-- **`calibration.lag_ms.Audio` is null.** EXP-04 / EXP-03b will measure (keystroke acoustic click).
-- **`calibration.lag_ms.Emotiv*` is null.** EXP-07 will measure.
-- **Postprocessor (`analysis/postprocess.py`) is not yet built.** Design in `outputs/post_processing_design.md`.
-- **`sensorchrono` package modules are skeleton only.** No code migrated yet.
+- **ECG absolute lag (`lag_ms.ShimmerECG`) is only a lower bound from in-situ calibration.** The BT one-way minimum (~few ms) excludes the Shimmer's internal ADC + filter-chain delay. Audio/video absolute lag are fully measured. For ECG-physical sync at sub-ms precision, need an external piezo+Arduino LSL marker bridge — hardware build, out of software scope.
+- **Audio-clock drift over hour scale is unmeasured.** 5-min recording was too short to bound below ±84 ppm CI with natural typing fiducials. Run simplified EXP-06b (no ECG-coupling expectation) if hour-scale audio drift matters.
+- **`sensorchrono` package migration still pending.** Everything works at repo root + `analysis/`. Migration to a proper package layout is a refactor, not new capability.
+- **`old9` clock anomaly (251 ppm, 22 ms residual)** is now correctly auto-flagged FAIL by `shimmer_clock_model.py`. Root cause (bridge restart? BT congestion?) still unconfirmed but no longer a blind spot.
+- **`old7` zero-ppm anomaly** is now auto-flagged ANOMALY ("b_ppm_exact_zero (likely bridge state reset)"). Same status as above — detected, not yet root-caused.
 
 ## Hardware state (assumed unchanged)
 

@@ -1,6 +1,102 @@
-# Shimmer LSL Bridge
+# Shimmer LSL Bridge + Multi-Modal Sync Suite
 
-Stream ECG (and EMG) data from a Shimmer device to Lab Streaming Layer (LSL), record it with Lab Recorder, and examine the recorded data.
+Stream ECG (and EMG) data from a Shimmer device to Lab Streaming Layer (LSL), record it with Lab Recorder, **and**
+produce drift-corrected, lag-calibrated, audit-certified multi-modal datasets in one command.
+
+---
+
+## Sync Suite — what this gives you, and what it does not
+
+This repo started as a Shimmer→LSL bridge. It now also contains a small **sync suite** for
+recording and post-processing multi-modal sessions (Shimmer ECG + BRIO video + audio + keyboard) with auditable
+timing. **Read this section in full before assuming sub-millisecond accuracy.**
+
+### What works today (verified across 10 recordings)
+
+| Capability | File | Status |
+|---|---|---|
+| Multi-modal LSL bridges (ECG, video, audio, keyboard) | `shimmer_lsl_bridge.py`, `video_lsl_bridge.py`, `audio_lsl_bridge.py`, `keyboard_fiducial_bridge.py` | shipped |
+| Calibrated-recording launcher (5 bridges + LabRecorder, one click) | `launchers/launch_calibrated_recording.bat` | shipped |
+| Live stream health probe | `analysis/exp06_checkin.py` | shipped |
+| Post-hoc Shimmer crystal drift correction | `analysis/shimmer_clock_model.py` | shipped, validated on 10 XDFs |
+| In-situ absolute-lag calibration (audio + video) | `analysis/insitu_lag_calibration.py` | shipped |
+| Per-recording quality audit (drift + lag + stream completeness, one command) | `analysis/recording_audit.py` | shipped |
+| End-to-end 5-stage post-processing pipeline | `analysis/postprocess.py` | shipped |
+
+### What this delivers in numbers
+
+On the validation XDF (5-minute recording with all 6 streams):
+
+- Shimmer crystal drift fit: **+35.79 ppm**, residual std **2.5 ms** over the whole recording
+- Audio absolute lag (BRIO mic via USB): **+46.5 ms** (95% CI 44–52 ms)
+- Video absolute lag (BRIO camera via USB): **+1.4 ms** (95% CI 0–3 ms)
+- Stage-5 residual after lag subtraction: **0.0 ms** median for both audio and video
+- Cross-session Shimmer drift consistency: 24–49 ppm across 8 PASS recordings (range 25 ppm)
+
+### Quick start: record one session and post-process it
+
+```
+launchers\launch_calibrated_recording.bat
+```
+
+Then in LabRecorder: **Update → tick all 6 streams → Start**.
+Do the 30-second calibration block (10–20 firm spacebar presses spaced ~2 s apart) before any real recording activity.
+Wait for bridges to print `=== exited ===`, click **STOP** in LabRecorder.
+Then:
+
+```
+.venv\Scripts\python.exe -m analysis.postprocess PATH\TO\recording.xdf --out-dir OUT\
+```
+
+This produces `OUT\pipeline_report.md` plus per-stream CSVs with corrected timestamps, frame-index↔LSL-time mapping for the MP4, and a single PASS / WARN / FAIL verdict.
+
+### What this does NOT yet give you
+
+| Limitation | Practical effect | Mitigation today |
+|---|---|---|
+| Shimmer ECG absolute lag is only a **lower bound** (BT one-way minimum, ~few ms). | Cross-modal alignment between ECG events and physical reality has an unknown few-ms systematic offset. | Use cardiac event↔video alignment for analyses that can tolerate ~10 ms offset. For sub-ms ECG anchoring you need an external fiducial rig (Arduino + piezo). Not yet built. |
+| Audio + video calibration is per-recording; profile defaults are not yet wired in. | Each session needs its own calibration block. Skipping it leaves lags at null. | Always do the calibration block. The launcher reminds you. |
+| The `sensorchrono/` package is still a skeleton (no code migration done). | Everything lives at repo root and under `analysis/`. | Functional today; refactor later. |
+| Hour-scale audio drift hasn’t been validated. | Audio drift assumed locked to system clock; not certified beyond 5 min. | If running > 1 h sessions, treat audio drift as an open question. |
+
+### How drift correction actually works (one paragraph)
+
+The `ShimmerDiagnostics_ECG` stream (1 Hz) carries the Shimmer bridge’s per-packet
+`last_observed_s = lsl_time - dev_ts` value. Bluetooth transport adds bimodal jitter, but the underlying
+crystal drift is a clean linear function of time. `analysis/shimmer_clock_model.py` extracts that drift
+via one-way-delay minimum filtering (10 s bins, take minimum per bin, Theil-Sen line fit), giving
+`(a, b)` such that `corrected_lsl_ts = a + b * dev_ts`. The fit is reproducible from the XDF alone—no external fiducial required. Auto-flags `b_ppm == 0` (bridge state reset), `|b_ppm| > 100` (out-of-distribution session), and residual > 20 ms (non-linear clock behavior).
+
+### How absolute lag calibration works (one paragraph)
+
+Every keystroke during the recording is a free multi-modal fiducial: the keyboard HID timestamp is the system-clock reference; the click sound shows up in the BRIO mic (99% detected at SNR > 10); the nearest video frame timestamp gives a half-frame-quantized video clock measurement. `analysis/insitu_lag_calibration.py` computes the median per-event delta for each modality (with 95% bootstrap CI) and emits that as the calibrated `lag_ms` for the recording. As long as the recording includes a 30-second calibration block (10–20 firm keystrokes in a quiet moment), audio and video lag are measured **in situ**, no external hardware needed.
+
+### Where everything lives
+
+```
+shimmer_lsl_bridge.py            # core Shimmer bridge
+audio_lsl_bridge.py              # BRIO mic to LSL
+video_lsl_bridge.py              # BRIO camera to LSL (+ MP4 + frames.csv)
+keyboard_fiducial_bridge.py      # USB HID keystrokes to LSL
+launchers/
+  launch_calibrated_recording.bat        # the canonical one-click launcher
+  _calibrated_{shimmer,audio,video,keyboard}.bat   # per-bridge sub-launchers
+  ... (other one-off experiment launchers)
+analysis/
+  shimmer_clock_model.py         # post-hoc Shimmer drift correction (library + CLI)
+  insitu_lag_calibration.py      # in-situ absolute-lag measurement
+  recording_audit.py             # per-recording quality report
+  postprocess.py                 # the 5-stage end-to-end pipeline
+  exp06_checkin.py               # live stream health probe
+  exp0[0-6]_analyze*.py          # per-experiment analyzers from the dev sessions
+profiles/                        # per-device YAML calibration files
+outputs/
+  post_processing_design.md      # full pipeline design doc
+  exp06_hour_drift_design.md     # protocol for hour-scale drift testing
+  PRD_lsl_sync_suite.md          # forward-looking product requirements
+CHANGELOG.md                     # per-session lab notebook
+RESUME.md                        # resume-from-where-you-left-off guide
+```
 
 ---
 

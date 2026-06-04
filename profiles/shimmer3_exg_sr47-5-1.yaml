@@ -57,12 +57,31 @@ safety:
 # After post-processing applies the subtraction, the modality's timestamps
 # refer to when the physical event happened, not when LSL saw the packet.
 calibration:
-  status: pending               # pending | measured | stale
-  measured_at: null
-  reference_fiducial: null
-  n_events: 0
+  status: drift_measured_ecg_lag_bound_only  # drift measured; ECG lag is lower bound; audio+video lag measured per-recording in-situ
+  measured_at: 2026-06-03
+  reference_fiducial: keyboard_multimodal (HID + audio click + video frame)
+  n_events: 538                 # from EXP-06 in-situ calibration (typical session has 10-20 in calibration block)
   lag_ms:
-    ShimmerECG: null
-    ShimmerEMG: null
-    ShimmerAccel: null
-  drift_ppm_observed: null      # populated by long-run validation
+    # Per-recording in-situ values from analysis/insitu_lag_calibration.py take precedence over these.
+    # Below are MEDIAN values observed on EXP-06; populate per-recording in pipeline_report.json.
+    ShimmerECG: null            # only a lower bound (~-4.4 ms from BT one-way min) is computable in-situ;
+                                #   full lag requires external piezo+Arduino fiducial rig
+    ShimmerEMG: null            # unmeasured
+    ShimmerAccel: null          # unmeasured (vibration coupling failed in EXP-03)
+  lag_ms_other_modalities:      # measured per-recording by analysis/insitu_lag_calibration.py
+    Audio_BRIO_via_USB: 46.5    # median ms over n=529 keystrokes; 95%CI [44.5, 51.8]
+    VideoFrames_BRIO_via_USB: 1.35  # median ms over n=538 keystrokes; 95%CI [-0.05, 2.63]
+  drift_ppm_observed:           # rolling-min OWD on ShimmerDiagnostics_ECG ch1, Theil-Sen fit
+    runs:
+      - {date: 2026-06-02, exp: EXP-00, duration_s: 300, ppm: 31.1}
+      - {date: 2026-06-02, exp: EXP-01, duration_s: 314, ppm: 37.4}
+      - {date: 2026-06-03, exp: EXP-06, duration_s: 297, ppm: 35.8, residual_std_ms: 2.5}
+    median_ppm: 35.8
+    spread_ppm: 6.3              # max - min across the 3 runs
+    note: |
+      Crystal drift is stable enough across sessions that a single
+      linear fit per recording suffices (variance across runs < 7 ppm,
+      well within typical 32.768 kHz crystal temperature spec).
+      Sign convention: positive ppm = system clock faster than device.
+      Fit method: rolling 10s minimum of `last_observed_s` (col 1) of
+      ShimmerDiagnostics_ECG stream, then Theil-Sen on the binned series.

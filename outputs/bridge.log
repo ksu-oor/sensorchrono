@@ -1,0 +1,27 @@
+2026-06-03 10:16:18.072 (   0.640s) [         8306812]      netinterfaces.cpp:36    INFO| netif '{31EA4958-347B-4723-B7B6-E9C3347806D3}' (status: 1, multicast: 1
+2026-06-03 10:16:18.073 (   0.641s) [         8306812]      netinterfaces.cpp:58    INFO| 	IPv6 ifindex 6
+2026-06-03 10:16:18.074 (   0.641s) [         8306812]      netinterfaces.cpp:36    INFO| netif '{AD2FDA8C-AF04-4E5B-977C-D6278BF7E41F}' (status: 2, multicast: 1
+2026-06-03 10:16:18.074 (   0.642s) [         8306812]      netinterfaces.cpp:36    INFO| netif '{742822AE-D45F-4EDF-A426-F85BF95A9189}' (status: 2, multicast: 1
+2026-06-03 10:16:18.075 (   0.642s) [         8306812]      netinterfaces.cpp:36    INFO| netif '{7BDB6776-BF1E-49EF-A7BE-604D77E6DB56}' (status: 2, multicast: 1
+2026-06-03 10:16:18.082 (   0.650s) [         8306812]      netinterfaces.cpp:36    INFO| netif '{51761728-7013-45F4-89A7-95D29E76F50A}' (status: 2, multicast: 1
+2026-06-03 10:16:18.082 (   0.650s) [         8306812]      netinterfaces.cpp:36    INFO| netif '{88DEEB03-B027-11F0-9529-806E6F6E6963}' (status: 1, multicast: 1
+2026-06-03 10:16:18.083 (   0.650s) [         8306812]      netinterfaces.cpp:58    INFO| 	IPv6 ifindex 1
+2026-06-03 10:16:18.083 (   0.650s) [         8306812]         api_config.cpp:126   INFO| Loaded default config
+2026-06-03 10:16:18.083 (   0.651s) [         8306812]             common.cpp:78    INFO| git:64988c6a14b8dc3b3f270ece58eab4f480bfab43/branch:refs/tags/v1.17.7/build:Release/compiler:MSVC-19.29.30159.0/link:SHARED
+Opened COM3
+
+LSL streams are ready to publish once the device setup completes.
+Open LabRecorder, wait for ShimmerECG and ShimmerMarkers, then press Enter here.
+--no-prompt: auto-starting in 6.0s. Outlets are already live for LabRecorder.
+[COM3] Running ECG...
+[COM3] Enable EXG: ACK
+[COM3] Set sample rate: ACK
+[COM3] Configure EXG chip 1: ACK
+[COM3] Configure EXG chip 2: ACK
+[COM3] Start streaming: ACK
+[COM3] Sync: offset=4, error=-0.0 ticks
+[COM3] LSL outlet: ShimmerECG @ 256 Hz
+[COM3] LSL outlet: ShimmerDiagnostics_ECG @ 1 Hz
+[COM3] Waiting for scheduled recording start...
+Recording will start in 2.0 s and run for 240.0 s.
+[COM3] Recording started...
