@@ -555,7 +555,24 @@ one-folder app; liblsl.dylib bundled; the frozen GUI boots offscreen and the
 frozen `--run-postprocess` dispatch runs. Windows-specifics (liblsl.dll,
 LabRecorder.exe, the Inno installer) are documented and need a Windows host.
 
-### Next
-- Phase 5: Windows hardware bring-up (real Shimmer+camera+mic session;
-  verify LabRecorder RCS; confirm .xdf+.mp4 + Stage-5 residual ≈ 0 ms).
-- Phase 6: docs (USER_GUIDE, SETUP_GUIDE) + tag v1.0.0.
+### SensorChrono Phase 5+6 (docs + release prep) landed
+- `docs/USER_GUIDE.md`: operator run-mode walkthrough of the wizard.
+- `docs/SETUP_GUIDE.md`: admin install/config, the **LabRecorder RCS
+  verification** (`Test-NetConnection localhost -Port 22345`), device-binding
+  setup, and the **Phase-5 Windows hardware bring-up runbook + acceptance
+  checklist** (staging gate blocks until green, `.xdf`+`.mp4` written, Stage-5
+  residual ≈ 0 ms).
+
+**Phase 5 (hardware bring-up) is a documented runbook, NOT executed** — it
+requires the Windows lab machine with real Shimmer/BRIO/keyboard + LabRecorder,
+which isn't available in this dev environment. Everything testable without
+hardware is validated (109 tests green under the venv, 101 + 2 skipped on the
+bare box; full wizard driven against real LSL on macOS; frozen build boots).
+The **v1.0.0 tag is deliberately withheld** until the
+Phase-5 acceptance checklist passes on hardware — the tag asserts
+hardware-validated end-to-end sync.
+
+### Status
+SensorChrono v1 is code-complete and validated end-to-end on macOS (dry-run +
+real LSL). Remaining before tagging v1.0.0: run the Phase-5 checklist on the
+Windows rig.
