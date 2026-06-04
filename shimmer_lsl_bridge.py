@@ -166,6 +166,10 @@ def parse_args():
     parser.add_argument("--ecg-port", default=ECG_PORT, help=f"COM port for ECG Shimmer. Default: {ECG_PORT}.")
     parser.add_argument("--emg-port", default=EMG_PORT, help=f"COM port for EMG Shimmer. Default: {EMG_PORT}.")
     parser.add_argument("--record-seconds", type=float, default=RECORD_S, help=f"Recording duration. Default: {RECORD_S}.")
+    parser.add_argument("--no-prompt", action="store_true",
+                        help="Skip the 'Press Enter' prompt and start recording after a fixed delay. Used for headless runs.")
+    parser.add_argument("--start-delay", type=float, default=3.0,
+                        help="With --no-prompt, wait this many seconds before recording starts. Default 3.0.")
     return parser.parse_args()
 
 
@@ -574,7 +578,11 @@ def main():
         print("Open LabRecorder, wait for ShimmerECG and ShimmerMarkers, then press Enter here.")
     else:
         print("Open LabRecorder, wait for ShimmerEMG and ShimmerMarkers, then press Enter here.")
-    input("Press Enter when LabRecorder is recording...")
+    if args.no_prompt:
+        print(f"--no-prompt: auto-starting in {args.start_delay:.1f}s. Outlets are already live for LabRecorder.")
+        time.sleep(args.start_delay)
+    else:
+        input("Press Enter when LabRecorder is recording...")
     recording_start_lsl = pylsl.local_clock() + WARMUP_S
     shared_start["recording_start_lsl"] = recording_start_lsl
     emit_marker(marker_outlet, marker_lock, "recording_armed", "SYSTEM",
