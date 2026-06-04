@@ -509,5 +509,30 @@ Tests assert each adapter's readiness regex matches the bridge's *literal*
 stdout line (the stringly-typed contract), argv correctness, the headless
 guard, and a stub-launch lifecycle end-to-end. 101 tests green on macOS.
 
+### SensorChrono Phase 3 (PySide6 GUI wizard) landed
+The operator-facing shell. PySide6 6.11 + pyqtgraph 0.14 run headless on
+Python 3.14, so the GUI is built AND tested on macOS (offscreen Qt).
+
+- `ui/waveform.py`: pyqtgraph ECG ring-buffer trace (downsampling+clipToView)
+  + audio level meter.
+- `ui/video_preview.py`: QImage→QPixmap preview + synthetic dry-run frames
+  (VideoFrames LSL carries timestamps, not pixels, so preview is separate).
+- `ui/pages.py`: 7 wizard pages (setup/preflight/liveness/calibrate/record/
+  done/error), each dumb — renders state, emits a Qt signal on action.
+- `ui/main_window.py`: QStackedWidget shell wiring pages ↔ SessionController;
+  QTimer-driven liveness refresh + LiveView (pulls ECG/audio off LSL, feeds the
+  staging widgets); spacebar→note_fiducial during calibration.
+- `__main__.py`: `python -m sensorchrono` launches the GUI (`--info` for the
+  text summary / bare-box fallback).
+
+Verified: 109 tests green under the venv (8 offscreen GUI tests added), 101 on
+the bare box (GUI + LSL integration skip). A full wizard run drove
+setup→preflight→staging(green from real LSL)→calibrate(12 fiducials)→record→
+DONE entirely through the GUI, offscreen, on macOS.
+
+Threading note: FSM transitions run on the GUI thread (fine for dry-run; real-
+capture staging/postprocess should move to a worker QThread — Phase 5 polish).
+
 ### Next
-- Phase 3: PySide6 GUI wizard (wire pages to the FSM signals).
+- Phase 4: packaging (PyInstaller one-folder spec, liblsl + LabRecorder
+  bundling, Inno Setup installer, PACKAGING.md).

@@ -1,8 +1,7 @@
-"""``python -m sensorchrono`` entry point (and the PyInstaller target later).
+"""``python -m sensorchrono`` entry point (and the PyInstaller target).
 
-Phase 0: there is no GUI yet, so this prints an environment + profile summary
-so the package is runnable end-to-end before the wizard lands (Phase 3). Once
-``ui/main_window.py`` exists this will launch the Qt app instead.
+Launches the PySide6 wizard. With ``--info`` (or when PySide6 isn't installed)
+it prints an environment/profile summary instead — handy on a bare box.
 """
 from __future__ import annotations
 
@@ -13,21 +12,20 @@ from sensorchrono.config import default_dry_run
 from sensorchrono.profiles import list_profiles
 
 
-def main(argv: list[str] | None = None) -> int:
-    argv = sys.argv[1:] if argv is None else argv
+def _print_info() -> int:
     print(f"sensorchrono {__version__}")
     print(f"platform={sys.platform}  dry_run_default={default_dry_run()}")
     try:
         profiles = list_profiles()
         print(f"profiles ({len(profiles)}): {', '.join(profiles) or '(none)'}")
-    except Exception as exc:  # surface, don't swallow
+    except Exception as exc:
         print(f"profiles: <error: {exc}>")
         return 1
     try:
         import pylsl
     except ImportError:
         lsl = "NOT installed — dry-run runs without real LSL outlets"
-    except Exception as exc:  # installed but ABI/arch-broken — operator must fix
+    except Exception as exc:
         lsl = f"installed but BROKEN: {exc}"
     else:
         try:
@@ -35,8 +33,25 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             lsl = f"installed but BROKEN: {exc}"
     print(f"pylsl: {lsl}")
-    print("GUI arrives in Phase 3; run `pytest tests/` for the current surface.")
+    try:
+        import PySide6  # noqa: F401
+
+        print("PySide6: available — `python -m sensorchrono` launches the GUI")
+    except Exception:
+        print("PySide6: NOT installed — `pip install PySide6 pyqtgraph` to run the GUI")
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if "--info" in argv:
+        return _print_info()
+    try:
+        from sensorchrono.ui.main_window import run
+    except Exception as exc:  # PySide6 missing → fall back to the text summary
+        print(f"GUI unavailable ({exc}); showing info instead.\n")
+        return _print_info()
+    return run(argv)
 
 
 if __name__ == "__main__":
