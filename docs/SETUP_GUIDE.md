@@ -112,6 +112,12 @@ machine**. Do this once before declaring v1.0.0.
 - Post-processing errors → run it directly for detail:
   `python -m analysis.postprocess <recording>.xdf --out-dir OUT --mp4 <recording>.mp4`
 
-Once every box is ticked, tag the release: `git tag -a v1.0.0` (see
-[CHANGELOG.md](../CHANGELOG.md)). **Do not tag v1.0.0 before this passes** — the
-tag asserts hardware-validated end-to-end sync.
+Once every box is ticked, this build is **hardware-validated**. Releases are
+published **automatically** — there is no manual `git tag` step: merging to `main`
+runs `.github/workflows/release.yml`, which bumps the version and publishes the
+Windows installer to [Releases](https://github.com/ksu-oor/sensorchrono/releases).
+Because the pipeline can't run on hardware, treat this checklist as the gate *before
+relying on a build for real recording*: run it against the installed release and
+confirm a green checklist before using that build in the lab. To cut a deliberate
+minor/major (e.g. the first hardware-blessed `1.1.0`), bump `__version__` in
+`sensorchrono/__init__.py` and merge — see [CHANGELOG.md](../CHANGELOG.md).

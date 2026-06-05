@@ -41,6 +41,35 @@ powershell -ExecutionPolicy Bypass -File build\build_windows.ps1
 Then compile `build\installer.iss` with **Inno Setup** →
 `SensorChrono-1.0.0-setup.exe`.
 
+## Releasing (automated)
+
+`.github/workflows/release.yml` runs the build above on a Windows runner and
+publishes the installer to **GitHub Releases**. Three ways in:
+
+| Trigger | Version | Result |
+|---|---|---|
+| **push to `main`** (e.g. a merged PR) | auto: latest tag's patch + 1 | publishes a Release + creates the `v<x>` tag |
+| **push a `v*.*.*` tag** | the tag | publishes a Release at that exact version |
+| **manual `workflow_dispatch`** | the input | uploads a downloadable artifact, **no** publish |
+
+**The version authority is `build/next_version.py`** — it reads the existing git
+tags and the committed `__version__` *floor* in `sensorchrono/__init__.py`:
+
+- no tags yet → release the floor (first release);
+- floor above the newest tag → release the floor (a **manual minor/major bump**:
+  edit `__version__` to e.g. `1.1.0` and merge);
+- otherwise → newest tag with **patch + 1**.
+
+The floor is intentionally *not* rewritten back into the repo, so there are no bot
+commits to `main` and no CI loops. The workflow stamps the resolved version into
+`sensorchrono/__init__.py` and `installer.iss` **in the build tree only** (never
+committed), so the frozen exe always reports the real release number. The release
+step creates the tag via `GITHUB_TOKEN`, which by design does **not** re-fire the
+workflow (no double build). Add `[skip release]` to a merge message to skip a build.
+
+The rule is unit-tested in `tests/test_next_version.py`; the full design note is
+`docs/superpowers/specs/2026-06-05-auto-release-versioning-design.md`.
+
 ## What gets bundled (see `build/sensorchrono.spec`)
 
 | Item | How | Located at runtime |

@@ -1,10 +1,17 @@
 name: Release
 
-# Build the Windows installer. A v*.*.* tag publishes a GitHub Release; a manual
-# run (workflow_dispatch) produces a downloadable artifact for hardware testing
-# WITHOUT publishing anything.
+# Build + publish the Windows installer. Three ways in:
+#   * push to `main`           -> AUTO-bump the patch and publish a GitHub Release
+#                                 (the version is computed from existing tags +
+#                                  the committed floor; see build/next_version.py).
+#   * push a v*.*.* tag        -> publish a Release at that exact version (manual
+#                                 override / forced minor-major).
+#   * workflow_dispatch        -> build a downloadable test artifact, NO publish.
+#
+# Add "[skip release]" to a merge/commit message to skip the build on that push.
 on:
   push:
+    branches: ["main"]
     tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
@@ -13,56 +20,92 @@ on:
         required: false
         default: ""
 
+# Serialize releases so two quick merges don't race for the same number. We do
+# NOT cancel in-progress builds (a half-published release is worse than a wait).
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 jobs:
   build-windows:
     runs-on: windows-latest
+    # Skip the build only when a *branch* push (not a tag, not a manual dispatch)
+    # carries "[skip release]" in its head commit. Written as one negated guard so
+    # the intent is explicit and not sensitive to clause ordering.
+    if: >-
+      ${{ !(github.event_name == 'push'
+            && !startsWith(github.ref, 'refs/tags/')
+            && contains(github.event.head_commit.message, '[skip release]')) }}
     steps:
+      # fetch-depth: 0 brings the full tag history so next_version.py can find the
+      # latest release tag when auto-computing on a push to main.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      # Resolve the version from the tag (strip leading v) or the dispatch input,
-      # then HARD-VALIDATE it before it is ever used to stamp files. The raw
-      # dispatch input is treated as untrusted: it only reaches a shell as an env
-      # var, and a value that isn't strict semver is rejected outright.
+      # Resolve the version from the trigger, then HARD-VALIDATE it before it is
+      # ever used to stamp files. A tag/auto-computed value is trusted by shape;
+      # the dispatch input is untrusted and must be strict semver or it's rejected.
       - name: Resolve and validate version
         id: ver
         shell: pwsh
         env:
-          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+          EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
         run: |
           if ($env:REF -like "refs/tags/v*") {
             $v = $env:REF -replace "^refs/tags/v", ""
-          } elseif ($env:DISPATCH_VERSION) {
+            Write-Host "Version from tag: $v"
+          } elseif ($env:EVENT -eq "workflow_dispatch") {
+            if (-not $env:DISPATCH_VERSION) {
+              throw "workflow_dispatch requires the 'version' input, e.g. 1.0.0-rc1."
+            }
             $v = $env:DISPATCH_VERSION
+            Write-Host "Version from dispatch input: $v"
+          } elseif ($env:EVENT -eq "push") {
+            # push to main -> next patch from existing tags + the committed floor
+            $v = (python build/next_version.py).Trim()
+            Write-Host "Auto-computed next version: $v"
           } else {
-            throw "No version: push a v*.*.* tag or supply the workflow_dispatch 'version' input."
+            throw "Unsupported trigger '$($env:EVENT)' / ref '$($env:REF)'."
           }
           if ($v -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$') {
             throw "Refusing unsafe/invalid version string: '$v'"
           }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "Resolved version: $v"
 
-      # Stamp into the BUILD TREE only (never committed). Both files use a flat
-      # anchored regex so only the version literal changes.
+      # Stamp into the BUILD TREE only (never committed). VERSION already passed the
+      # strict semver regex above, so it carries no PowerShell metacharacters. The
+      # non-greedy [^"]* class changes only the quoted version literal, then we
+      # HARD-VERIFY the stamp landed in both files — a silent regex no-match would
+      # otherwise publish an installer whose version disagrees with the tag/Release.
       - name: Stamp version into the build tree
         shell: pwsh
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
           (Get-Content sensorchrono/__init__.py) `
-            -replace '^__version__ = ".*"', "__version__ = `"$env:VERSION`"" |
+            -replace '^__version__ = "[^"]*"', "__version__ = `"$env:VERSION`"" |
             Set-Content sensorchrono/__init__.py
           (Get-Content build/installer.iss) `
-            -replace '^#define AppVersion ".*"', "#define AppVersion `"$env:VERSION`"" |
+            -replace '^#define AppVersion "[^"]*"', "#define AppVersion `"$env:VERSION`"" |
             Set-Content build/installer.iss
+          if (-not (Select-String -Path sensorchrono/__init__.py -SimpleMatch -Quiet `
+                    -Pattern "__version__ = `"$env:VERSION`"")) {
+            throw "Version stamp failed: sensorchrono/__init__.py is not at $env:VERSION"
+          }
+          if (-not (Select-String -Path build/installer.iss -SimpleMatch -Quiet `
+                    -Pattern "#define AppVersion `"$env:VERSION`"")) {
+            throw "Version stamp failed: build/installer.iss is not at $env:VERSION"
+          }
 
       - name: Create venv and install dependencies
         shell: pwsh
@@ -118,7 +161,7 @@ jobs:
           "path=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "Installer: $($exe.FullName)"
 
-      # Manual run -> downloadable artifact only (no public release).
+      # Manual dispatch -> downloadable artifact only (no public release).
       - name: Upload test-build artifact
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
@@ -126,9 +169,16 @@ jobs:
           name: SensorChrono-${{ steps.ver.outputs.version }}-setup
           path: ${{ steps.artifact.outputs.path }}
 
-      # Tag push -> publish the installer on the GitHub Release.
+      # push to main OR a v*.*.* tag -> publish the installer on a GitHub Release.
+      # On a main push the tag v<version> doesn't exist yet; action-gh-release
+      # creates it at this commit. A tag created by GITHUB_TOKEN does NOT re-fire
+      # this workflow (GitHub loop-prevention), so there is no double build.
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name != 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: SensorChrono v${{ steps.ver.outputs.version }}
           files: ${{ steps.artifact.outputs.path }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true

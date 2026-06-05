@@ -79,6 +79,7 @@ There **is** a `pytest` suite in `tests/`, run hardware-free in CI (`.github/wor
 - A valid calibrated recording must include a **30-second calibration block** (10–20 firm spacebar presses ~2 s apart) — this is what makes in-situ lag measurable. Without it, lag values are null.
 - **LabRecorder** is auto-launched headlessly via its Remote Control Server (`orchestration/labrecorder_launcher.py`, RCS on `localhost:22345`); if RCS never comes up it falls back to the operator-guided `ManualRecorder`. The fallback is load-bearing — preserve it.
 - **Known limitation to respect:** `ShimmerECG` absolute lag is only a *lower bound* (Bluetooth one-way minimum); it excludes internal ADC/filter delay. Audio/video lag are fully measured; ECG is not. Don't claim sub-ms ECG-to-physical sync.
+- **Releases are automatic.** Every merge to `main` runs `release.yml`, which auto-bumps the patch and publishes the Windows installer to GitHub Releases. The version authority is `build/next_version.py` (latest git tag + the committed `__version__` *floor* in `sensorchrono/__init__.py`); tags + Releases are the real version record — `__version__` is **not** rewritten back (no bot commits). To cut a minor/major, bump `__version__` and merge. `next_version.py` is **stdlib-only and must not import `sensorchrono`** (it runs before deps install). Keep its logic in sync with `tests/test_next_version.py`. Use `[skip release]` in a merge message to skip a build.
 
 ## Where to look for context
 

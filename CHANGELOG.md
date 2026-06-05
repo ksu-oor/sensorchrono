@@ -1,5 +1,40 @@
 # LSL Sync Lab Notebook
 
+## 2026-06-05
+
+### Automatic versioned releases on every merge to `main`
+
+Turned the tag-driven Windows release into a hands-off pipeline: a downloadable,
+auto-versioned installer is published to GitHub Releases on every merge to `main`.
+
+- **Version authority is now `build/next_version.py`** (new, stdlib-only, must not
+  import `sensorchrono` — it runs before deps install). Rule: no tags → the
+  committed `__version__` floor; floor above the newest tag → the floor (a manual
+  minor/major bump); otherwise newest stable tag **patch + 1**. Monotonic — never
+  emits a version `<=` an existing tag. Prerelease/junk tags ignored. Fully unit
+  tested in `tests/test_next_version.py` (16 cases). Dry-run on the (tagless) repo
+  prints `1.0.0`, so the first auto-release will be `v1.0.0`.
+- **`release.yml` extended, not replaced.** Added `push: branches:[main]` (keeps the
+  `v*.*.*` tag and `workflow_dispatch` paths), `fetch-depth: 0` so tags are visible,
+  a `concurrency: release` group so quick merges serialize, and a `[skip release]`
+  head-commit escape hatch. The resolve step now branches on the trigger
+  (tag→ref, dispatch→input, push→`next_version.py`); the strict semver validation is
+  unchanged. The publish step runs on push-to-main **and** tag push, passes
+  `tag_name: v<version>` (action-gh-release creates the tag on a main push),
+  `generate_release_notes: true`, and `fail_on_unmatched_files: true`.
+- **No bot commits / no loops.** The floor isn't rewritten back to the repo; the
+  version is stamped into `__init__.py` + `installer.iss` in the build tree only.
+  The tag is created via `GITHUB_TOKEN`, which doesn't re-fire the workflow.
+- **Fixed stale download URLs.** README pointed at `ksu-oor/LSL_synchronization_multi`;
+  the canonical slug is `ksu-oor/sensorchrono` (the old name redirects). Pointed
+  downloads at the always-current latest-release page and dropped the unusable
+  `<version>` direct-asset pattern. Documented the flow in README, `build/PACKAGING.md`,
+  and `CLAUDE.md`; design note under `docs/superpowers/specs/`.
+- **Verified locally:** `actionlint 1.7.12` passes both workflows; `pytest -q` green
+  (incl. the new tests). End-to-end publish can only be confirmed once it runs on
+  `main` (GitHub-side). **Next:** merge to `main` and confirm `v1.0.0` appears on
+  Releases with the installer attached.
+
 ## 2026-06-04
 
 ### Make SensorChrono the product: clean repo + working frozen capture + release pipeline

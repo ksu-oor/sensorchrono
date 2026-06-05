@@ -18,13 +18,17 @@ wizard so the timing math is correct *and* the operator can't mis-record.
 
 ## Download for Windows
 
-Grab the latest installer from the **[Releases page](https://github.com/ksu-oor/LSL_synchronization_multi/releases/latest)**:
+Grab the latest installer from the **[latest release](https://github.com/ksu-oor/sensorchrono/releases/latest)** —
+that page always points at the newest build and is updated automatically on every
+merge to `main`:
 
 > **`SensorChrono-<version>-setup.exe`** — a single download that includes the app
 > **and a bundled LabRecorder**. No separate LabRecorder install needed.
 
-Direct latest-asset pattern:
-`https://github.com/ksu-oor/LSL_synchronization_multi/releases/latest/download/SensorChrono-<version>-setup.exe`
+The asset filename carries the version (e.g. `SensorChrono-1.0.3-setup.exe`), so the
+[latest-release page](https://github.com/ksu-oor/sensorchrono/releases/latest) is the
+stable place to grab the current installer; a specific version lives on its own
+release under **[Releases](https://github.com/ksu-oor/sensorchrono/releases)**.
 
 **SmartScreen note:** the installer isn't code-signed yet, so Windows SmartScreen
 may warn on first run. Click **More info → Run anyway**. (It's a normal Inno Setup
@@ -81,6 +85,19 @@ build\build_windows.ps1                   # PyInstaller one-folder -> dist\Senso
 
 See **[build/PACKAGING.md](build/PACKAGING.md)** for the packaging strategy and
 **`.github/workflows/release.yml`** for the canonical CI build.
+
+### Releases are automatic
+
+Every merge to `main` builds the Windows installer and publishes it to
+**[Releases](https://github.com/ksu-oor/sensorchrono/releases)** with the **patch
+number auto-incremented** (`1.0.0 → 1.0.1 → …`). To cut a **minor/major** release,
+bump `__version__` in `sensorchrono/__init__.py` (e.g. to `1.1.0`) and merge — the
+pipeline releases exactly that and resumes auto-patching from there. The version
+authority is `build/next_version.py` (the latest git tag + that floor); it is
+unit-tested in `tests/test_next_version.py`. Add `[skip release]` to a merge
+message to skip the build for a trivial change. See
+[the design note](docs/superpowers/specs/2026-06-05-auto-release-versioning-design.md)
+for the full rule.
 
 ## Post-processing on its own
 
