@@ -2,6 +2,28 @@
 
 ## 2026-06-05
 
+### Fixed: the auto-release skipped its own first run (`[skip release]` footgun)
+
+No Windows installer ever published because the **only** run of `release.yml` came
+back `skipped`, not `failure` — easy to miss, since a skipped job reads as
+success-adjacent in the UI. Root cause: the job-level guard used
+`contains(github.event.head_commit.message, '[skip release]')`, and for a push
+`head_commit.message` is the **whole** message (subject **+ body**). PR #5's merge
+commit *documented* the `[skip release]` feature in its body, so `contains()`
+matched and the pipeline skipped itself on the very commit that introduced it.
+
+- **`release.yml`:** replaced the job-level `if` with a cheap `gate` job
+  (`ubuntu-latest`) that inspects **only the commit subject** (first line) for the
+  token and exposes a `skip` output; `build-windows` is now `needs: gate` and runs
+  unless `skip == 'true'`. The message reaches the shell via an `env:` var (never an
+  inlined `${{ }}`), closing the workflow-injection vector. Tag pushes and manual
+  dispatches remain unskippable. Verified against the real PR #5 message: old logic
+  → skip, new logic → build; subject-token, tag, and dispatch cases all correct.
+- **Docs** (`CLAUDE.md`, `README.md`, `build/PACKAGING.md`, the design note): the
+  skip token must live in the commit **subject**, not just anywhere in the message.
+- Cut **`v1.0.0`** by pushing the tag (the tag path was never affected by the bug),
+  unblocking the first real Release; subsequent clean merges auto-patch from there.
+
 ### Automatic versioned releases on every merge to `main`
 
 Turned the tag-driven Windows release into a hands-off pipeline: a downloadable,

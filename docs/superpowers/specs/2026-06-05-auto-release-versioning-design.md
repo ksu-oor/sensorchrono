@@ -64,8 +64,11 @@ Changes vs. today:
    unchanged and still runs on every path.
 4. **Concurrency** `group: release, cancel-in-progress: false` so concurrent merges
    serialize instead of racing for the same number.
-5. **`[skip release]`** in the head commit message skips the build (job-level `if`),
-   for trivial/docs-only merges. Default is still: every merge releases.
+5. **`[skip release]`** in the commit **subject** (first line) skips the build, for
+   trivial/docs-only merges. A dedicated `gate` job parses the subject in shell and
+   exposes a `skip` output the build job gates on — checking only the subject (not
+   the whole message) so a commit that merely *describes* the token doesn't skip
+   itself. Default is still: every merge releases.
 6. **Publish step** now runs on `github.event_name != 'workflow_dispatch'` (both push-to-
    main and tag push), passes `tag_name: v<version>` (creates the tag on main-push),
    `generate_release_notes: true`, and `name: SensorChrono v<version>`.

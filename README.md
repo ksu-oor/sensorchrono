@@ -94,8 +94,8 @@ number auto-incremented** (`1.0.0 → 1.0.1 → …`). To cut a **minor/major** 
 bump `__version__` in `sensorchrono/__init__.py` (e.g. to `1.1.0`) and merge — the
 pipeline releases exactly that and resumes auto-patching from there. The version
 authority is `build/next_version.py` (the latest git tag + that floor); it is
-unit-tested in `tests/test_next_version.py`. Add `[skip release]` to a merge
-message to skip the build for a trivial change. See
+unit-tested in `tests/test_next_version.py`. Add `[skip release]` to the merge
+commit **subject** (first line) to skip the build for a trivial change. See
 [the design note](docs/superpowers/specs/2026-06-05-auto-release-versioning-design.md)
 for the full rule.
 

@@ -65,7 +65,9 @@ commits to `main` and no CI loops. The workflow stamps the resolved version into
 `sensorchrono/__init__.py` and `installer.iss` **in the build tree only** (never
 committed), so the frozen exe always reports the real release number. The release
 step creates the tag via `GITHUB_TOKEN`, which by design does **not** re-fire the
-workflow (no double build). Add `[skip release]` to a merge message to skip a build.
+workflow (no double build). Add `[skip release]` to the merge commit **subject**
+(first line) to skip a build — a `gate` job checks only the subject, so a token in
+the body (docs, changelogs) can't accidentally skip the release.
 
 The rule is unit-tested in `tests/test_next_version.py`; the full design note is
 `docs/superpowers/specs/2026-06-05-auto-release-versioning-design.md`.
