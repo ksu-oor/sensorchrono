@@ -8,7 +8,9 @@ name: Release
 #                                 override / forced minor-major).
 #   * workflow_dispatch        -> build a downloadable test artifact, NO publish.
 #
-# Add "[skip release]" to a merge/commit message to skip the build on that push.
+# Add "[skip release]" to the commit SUBJECT (first line) to skip the build on that
+# push. Only the subject is inspected — a body that merely *mentions* the token
+# (a changelog, a doc, this workflow's own introducing commit) does NOT skip.
 on:
   push:
     branches: ["main"]
@@ -30,15 +32,41 @@ permissions:
   contents: write
 
 jobs:
+  # Decide whether this push opts out of a release. We inspect ONLY the commit
+  # SUBJECT (first line) for the [skip release] token, never the body — otherwise a
+  # commit that merely *describes* the token (a changelog, a doc, or this pipeline's
+  # own introducing commit) skips itself. GitHub's expression language can't split a
+  # message into lines, so the decision is made here in shell and exposed as an
+  # output the build job gates on. A *branch* push is the only skippable trigger:
+  # tag pushes and manual dispatches always build. The message reaches the script via
+  # an env var (never inlined as ${{ }}) so a crafted commit can't inject shell.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.decide.outputs.skip }}
+    steps:
+      - id: decide
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          # head_commit is populated only for push events; empty otherwise.
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          skip=false
+          if [ "$EVENT" = "push" ] && [[ "$REF" != refs/tags/* ]]; then
+            subject="$(printf '%s\n' "$MSG" | head -n1)"
+            if printf '%s' "$subject" | grep -qF '[skip release]'; then
+              skip=true
+            fi
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          echo "event=$EVENT ref=$REF skip=$skip"
+
   build-windows:
+    needs: gate
+    if: needs.gate.outputs.skip != 'true'
     runs-on: windows-latest
-    # Skip the build only when a *branch* push (not a tag, not a manual dispatch)
-    # carries "[skip release]" in its head commit. Written as one negated guard so
-    # the intent is explicit and not sensitive to clause ordering.
-    if: >-
-      ${{ !(github.event_name == 'push'
-            && !startsWith(github.ref, 'refs/tags/')
-            && contains(github.event.head_commit.message, '[skip release]')) }}
     steps:
       # fetch-depth: 0 brings the full tag history so next_version.py can find the
       # latest release tag when auto-computing on a push to main.
