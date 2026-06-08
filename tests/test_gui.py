@@ -30,6 +30,15 @@ def app():
     return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 
+@pytest.fixture(autouse=True)
+def _isolate_user_config(tmp_path, monkeypatch):
+    # GUI flows persist the session to config.user_config_path() on start. Without
+    # this redirect the suite would write to the developer's real
+    # ~/.sensorchrono/config.yaml (it did, once — polluting a live install with a
+    # dry-run config pointed at a pytest temp dir). Pin it to a throwaway path.
+    monkeypatch.setenv("SENSORCHRONO_CONFIG", str(tmp_path / "user_config.yaml"))
+
+
 def _session(tmp_path, **over):
     kw = dict(participant="p01", session="s1", task="rest", duration_s=15, out_dir=tmp_path / "o", dry_run=True)
     kw.update(over)

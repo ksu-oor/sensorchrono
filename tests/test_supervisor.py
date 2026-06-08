@@ -88,6 +88,23 @@ def test_supervisor_not_ready_on_slow_device(tmp_path):
         sup.stop_all()
 
 
+def test_wait_until_ready_does_not_starve_fast_device_behind_slow(tmp_path):
+    # A slow device listed first must NOT consume the whole deadline and starve
+    # the fast ones behind it (the real "shimmer ate 20s -> camera not ready
+    # within 0.0s" bug). The poll loop gives each device the full window.
+    fleet = default_simulated_fleet()
+    fleet[0].startup_delay_s = 10.0  # slow: won't be ready inside the window
+    sup = Supervisor(fleet)
+    sup.launch_all(_session(tmp_path))
+    try:
+        r = sup.wait_until_ready(0.5)
+        assert not r.ok  # the slow device alone keeps the fleet from all-ready
+        ready_names = [name for name, res in r.results.items() if res.ok]
+        assert len(ready_names) == len(fleet) - 1  # every fast device still recognised
+    finally:
+        sup.stop_all()
+
+
 def test_supervisor_requires_adapters():
     with pytest.raises(ValueError):
         Supervisor([])

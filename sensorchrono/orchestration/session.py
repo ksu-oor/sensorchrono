@@ -52,7 +52,7 @@ class SessionController:
         preflight_fn: Callable[[SessionConfig], "preflight_mod.PreflightReport"] | None = None,
         fiducial: FiducialCounter | None = None,
         postprocess_fn: Callable[[Path | None, Path | None], PostprocessResult | None] | None = None,
-        ready_timeout_s: float = 20.0,
+        ready_timeout_s: float = 60.0,
     ) -> None:
         self.session = session
         self.state = SessionState.SETUP

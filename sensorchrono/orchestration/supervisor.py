@@ -159,14 +159,37 @@ class Supervisor:
             a.launch(session)
         self._launched = True
 
-    def wait_until_ready(self, timeout_s: float) -> FleetReadiness:
-        """Wait for every adapter to report ready, sharing one deadline so a
-        slow first device doesn't grant the rest extra time."""
+    def wait_until_ready(self, timeout_s: float, *, poll_s: float = 0.1) -> FleetReadiness:
+        """Wait for every adapter to report ready under ONE shared deadline,
+        polling all still-pending adapters each tick.
+
+        The earlier version consumed the deadline *sequentially* — it called
+        ``is_ready(remaining)`` per adapter in order, so a slow first device
+        (e.g. a Shimmer's cold Bluetooth connect) could burn the entire budget
+        and leave the rest with ~0 s, which then reported ``not ready within
+        0.0s`` even though their streams were about to come (or had already come)
+        up. Readiness latches, so instead we poll every pending adapter
+        non-blockingly until all are ready or the shared deadline passes — each
+        device effectively gets the *full* window, and a healthy fast device is
+        never starved by a slow sibling. Returns as soon as all are ready."""
         deadline = time.monotonic() + max(0.0, timeout_s)
         results: dict[str, ReadyResult] = {}
-        for a in self.adapters:
-            remaining = max(0.0, deadline - time.monotonic())
-            results[a.name] = a.is_ready(remaining)
+        pending = list(self.adapters)
+        while pending and time.monotonic() < deadline:
+            still: list[DeviceAdapter] = []
+            for a in pending:
+                r = a.is_ready(0.0)  # non-blocking: readiness has latched if it occurred
+                if r.ok:
+                    results[a.name] = r
+                else:
+                    still.append(a)
+            pending = still
+            if pending:
+                time.sleep(poll_s)
+        # Final blocking check for anything still pending, sharing what's left of
+        # the deadline so a genuinely-dead device still produces its failure note.
+        for a in pending:
+            results[a.name] = a.is_ready(max(0.0, deadline - time.monotonic()))
         return FleetReadiness(results)
 
     def stop_all(self) -> list[tuple[str, Exception]]:
