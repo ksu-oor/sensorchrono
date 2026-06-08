@@ -43,6 +43,42 @@ def test_run_bridge_dispatches_remaining_argv_to_module_main(monkeypatch):
     assert recorded["argv"] == ["--out-dir", "X", "--tag", "t"]
 
 
+def test_run_bridge_unbuffers_stdout_before_dispatch(monkeypatch):
+    # Regression: the frozen interpreter ignores PYTHONUNBUFFERED and block-buffers
+    # a long-running bridge's stdout, so its readiness line ("… is live") never
+    # reaches the supervisor and staging times out though the stream is live. The
+    # dispatch MUST unbuffer stdout BEFORE handing off to the (non-returning) bridge.
+    entry = _load_entry()
+    calls: list[str] = []
+    monkeypatch.setattr(entry, "_unbuffer_std_streams", lambda: calls.append("unbuffer"))
+    fake = types.ModuleType("fake_bridge_buf")
+    fake.main = lambda argv: calls.append("main")
+    monkeypatch.setitem(sys.modules, "fake_bridge_buf", fake)
+    monkeypatch.setattr(sys, "argv", ["SensorChrono.exe", "--run-bridge", "fake_bridge_buf"])
+
+    assert entry._main() == 0
+    assert calls == ["unbuffer", "main"], "stdout must be unbuffered before the bridge runs"
+
+
+def test_unbuffer_std_streams_enables_write_through(monkeypatch):
+    import io
+
+    entry = _load_entry()
+    w = io.TextIOWrapper(io.BytesIO(), line_buffering=False, write_through=False)
+    monkeypatch.setattr(sys, "stdout", w)
+    monkeypatch.setattr(sys, "stderr", w)
+    entry._unbuffer_std_streams()
+    assert w.write_through is True and w.line_buffering is True
+
+
+def test_unbuffer_std_streams_survives_none_streams(monkeypatch):
+    # A windowed build may have sys.stdout = None; unbuffering must not raise.
+    entry = _load_entry()
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    entry._unbuffer_std_streams()  # should be a quiet no-op
+
+
 def test_run_bridge_none_return_becomes_zero(monkeypatch):
     # Real bridges' main() returns None; the dispatch must still yield exit 0.
     entry = _load_entry()

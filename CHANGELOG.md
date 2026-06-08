@@ -1,5 +1,28 @@
 # LSL Sync Lab Notebook
 
+## 2026-06-08 (later still) — the REAL staging blocker: frozen stdout is block-buffered
+
+With v1.0.3 (60 s timeout + fair readiness), the on-hardware run got further —
+**all six streams went live, including `ShimmerECG`** (LabRecorder listed all six,
+and a manual recording saved a valid `.xdf`) — yet **Staging still errored after
+~60 s**. Root cause isolated empirically on the installed exe: ran the frozen
+audio bridge for 8 s with `PYTHONUNBUFFERED=1` and captured **0 bytes** of stdout
+mid-run. So a **PyInstaller-frozen interpreter ignores `PYTHONUNBUFFERED`** and
+block-buffers a worker's piped stdout; a bridge runs for minutes without exiting,
+so its one-line readiness signal (`… is live`) never reaches the supervisor's
+reader within the window — staging times out though the stream is live. (The
+prior `PYTHONUNBUFFERED` fix is real but only bites in **dev**; the frozen build,
+i.e. the actual product, was unaffected.)
+
+- **`build/sensorchrono_main.py`:** the `--run-bridge` / `--run-postprocess`
+  dispatch now calls `_unbuffer_std_streams()` *before* handing off, which does
+  `sys.stdout/stderr.reconfigure(line_buffering=True, write_through=True)` so every
+  write flushes straight through the pipe. `write_through` is the key (frozen
+  ignores the env var). Guarded for windowed builds where the streams may be
+  `None`. Added regression tests: the bridge path unbuffers **before** the
+  (non-returning) bridge starts, `write_through` is actually set, and `None`
+  streams don't raise.
+
 ## 2026-06-08 (later) — staging readiness: cold Bluetooth + fair per-device timeout
 
 First real on-hardware run of the v1.0.2 build got past binding/validation and
