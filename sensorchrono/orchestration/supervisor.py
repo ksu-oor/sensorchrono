@@ -15,6 +15,7 @@ Two pieces:
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import threading
@@ -51,13 +52,23 @@ class BridgeProcess:
     def start(self) -> None:
         if self._proc is not None:
             return  # idempotent
+        # Force the child's stdout UNBUFFERED. A Python child writing to a pipe
+        # block-buffers stdout by default, so a bridge's one-line readiness print
+        # ("... is live") can sit unflushed for tens of seconds — long past the
+        # readiness deadline — while liblsl's native (unbuffered C++) logging
+        # streams through immediately. The reader thread then never sees the
+        # match and staging wrongly fails even though the LSL stream is live.
+        # PYTHONUNBUFFERED is honoured by both the dev interpreter (``-m``) and
+        # the frozen PyInstaller exe (``--run-bridge``).
+        env = {**os.environ, "PYTHONUNBUFFERED": "1"}
         self._proc = subprocess.Popen(
             self.spec.argv,
             cwd=str(self.spec.cwd) if self.spec.cwd else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1,  # line-buffered
+            bufsize=1,  # line-buffered on our (read) side
+            env=env,
         )
         self._reader = threading.Thread(target=self._read_stdout, name=f"bridge-{self.spec.name}", daemon=True)
         self._reader.start()

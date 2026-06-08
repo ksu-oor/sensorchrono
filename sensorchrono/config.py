@@ -29,6 +29,21 @@ from sensorchrono.profiles import list_profiles
 
 DEFAULT_PROFILE_ID = "shimmer3_exg_sr47-5-1"
 
+#: Env override for where the app remembers the last session + device bindings.
+_CONFIG_PATH_ENV = "SENSORCHRONO_CONFIG"
+
+
+def user_config_path() -> Path:
+    """Where the app persists the last session config (incl. device bindings) so
+    an admin binds the hardware once and every later launch reloads it.
+
+    Honours ``$SENSORCHRONO_CONFIG`` (used by tests + power users); otherwise
+    ``~/.sensorchrono/config.yaml``."""
+    override = os.environ.get(_CONFIG_PATH_ENV)
+    if override:
+        return Path(override)
+    return Path.home() / ".sensorchrono" / "config.yaml"
+
 MIN_DURATION_S = 5
 MAX_DURATION_S = 240 * 60  # 4 h — matches profiles' safety.max_continuous_minutes
 

@@ -1,5 +1,41 @@
 # LSL Sync Lab Notebook
 
+## 2026-06-08
+
+### Fixed: real capture was impossible — no way to bind hardware, and staging falsely failed
+
+Two bugs made a "regular run" (non-dry-run) unusable on the real Windows box,
+while dry-run worked — exactly the reported symptoms ("dry run works", a real run
+errors with `real capture requires bindings.shimmer_com_port / camera_index`, and
+"LabRecorder shows no streams"). Both are now fixed and verified against the real
+Shimmer (Bluetooth COM3) + Logitech BRIO on the lab machine.
+
+- **No UI to bind the hardware.** `SetupPage` collected only participant/session/
+  task/duration/dry-run — it never set `SessionConfig.bindings`, so on Windows
+  (where `dry_run` defaults to **False**) every real run hit `validate()` with empty
+  bindings and was blocked before a single bridge launched (hence LabRecorder saw
+  nothing). Added a **"Hardware bindings (real capture)"** group to the SETUP page:
+  auto-detected dropdowns for the Shimmer COM port, camera index, and microphone,
+  plus a **Rescan devices** button. New import-safe `orchestration/device_scan.py`
+  does the enumeration (`serial.tools.list_ports`, `sounddevice`, opt-in OpenCV
+  camera probe), degrading to an empty list (operator can still type a value) when a
+  library or device is absent. The group is greyed out in dry-run. Bindings now
+  persist to `~/.sensorchrono/config.yaml` (`config.user_config_path()`) and reload
+  on launch, so an admin binds the rig **once**.
+- **Staging falsely failed though the LSL stream was already live.** A bridge prints
+  a one-line readiness signal (`... is live`); a Python child whose stdout is a pipe
+  **block-buffers** it, so it stranded in the buffer for tens of seconds — past the
+  20 s readiness deadline — while liblsl's unbuffered native logging streamed
+  through. `wait_until_ready` timed out and the session went to ERROR even though
+  the webcam was publishing `VideoFrames`. `BridgeProcess.start` now spawns the child
+  with **`PYTHONUNBUFFERED=1`** (honoured by both the dev `-m` interpreter and the
+  frozen `--run-bridge` exe), so readiness is detected immediately. The existing
+  supervisor tests masked this by passing `-u` in the *test* argv only; added a
+  regression test that omits `-u` and never flushes.
+- **Verified empirically:** the camera adapter now reports `ready: True`, the
+  `VideoFrames` LSL outlet resolves, and a real frame sample pulls — i.e. a recorder
+  (bundled LabRecorder via RCS, or any LabRecorder) will see the streams.
+
 ## 2026-06-05
 
 ### Fixed: the auto-release skipped its own first run (`[skip release]` footgun)

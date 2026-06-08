@@ -32,6 +32,23 @@ def test_bridge_ready_detected():
     assert not bp.is_alive()
 
 
+def test_bridge_ready_detected_without_dash_u_or_flush():
+    # Regression: production argv carries NO ``-u`` (only the test helper did),
+    # and a bridge's readiness print is not explicitly flushed. A child whose
+    # stdout is a pipe block-buffers by default, so the line would strand in the
+    # buffer past the deadline while the LSL stream is already live (the real
+    # "staging fails though the stream is up" bug). BridgeProcess.start must
+    # force PYTHONUNBUFFERED so the line arrives immediately.
+    prog = "import time;print(\"[t] LSL outlet 'X' is live.\");time.sleep(30)"
+    bp = BridgeProcess(BridgeSpec("t", [sys.executable, "-c", prog], re.compile(r"is live")))
+    bp.start()
+    try:
+        r = bp.wait_ready(5.0)
+        assert r.ok, r.detail
+    finally:
+        bp.stop()
+
+
 def test_bridge_early_exit_is_failure():
     bp = _bridge("import sys;sys.exit(3)", r"is live")
     bp.start()
