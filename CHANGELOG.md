@@ -1,5 +1,33 @@
 # LSL Sync Lab Notebook
 
+## 2026-06-08 (later) — staging readiness: cold Bluetooth + fair per-device timeout
+
+First real on-hardware run of the v1.0.2 build got past binding/validation and
+**Preflight passed all four checks** (COM3 opened, camera 0 opened, mic 6 present,
+RCS reachable) — the binding fix works. But **Staging** failed:
+`devices not ready: shimmer_exg: not ready within 20.0s; camera/mic/keyboard: not
+ready within 0.0s`. Diagnosed by running the Shimmer bridge standalone on COM3 —
+it completed the full handshake and streamed (`LSL outlet: ShimmerECG @ 256 Hz`,
+3097 samples), so the **device + port were fine**; the failure was pure timing.
+
+- **Readiness deadline was too short for a cold start.** A Shimmer's *first*
+  Bluetooth RFCOMM connect + EXG handshake can exceed the 20 s budget (the warm
+  reconnect is seconds). Bumped `SessionController.ready_timeout_s` **20 → 60 s**.
+- **A slow device starved the rest.** `Supervisor.wait_until_ready` consumed one
+  shared deadline *sequentially*, so the slow Shimmer left ~0 s for camera/mic/
+  keyboard → `not ready within 0.0s` even though the camera had already powered
+  on. Rewrote it as a **poll loop**: every still-pending adapter is checked
+  non-blockingly each tick until all are ready or the shared deadline passes, so
+  each device gets the full window and a fast device is never starved by a slow
+  sibling. Returns as soon as all are ready. Added a fairness regression test.
+- **Test-isolation fix (root cause of a scary detour).** The GUI tests drove
+  `_start_session`, which persists to `config.user_config_path()` — and most
+  tests didn't override it, so a dev test run **wrote a dry-run config pointed at
+  a pytest temp dir into the real `~/.sensorchrono/config.yaml`**. The live
+  install then reloaded it and launched in dry-run with a blank participant. Added
+  an autouse fixture pinning `SENSORCHRONO_CONFIG` to a throwaway path for every
+  GUI test; verified the real file is no longer touched.
+
 ## 2026-06-08
 
 ### Fixed: real capture was impossible — no way to bind hardware, and staging falsely failed
