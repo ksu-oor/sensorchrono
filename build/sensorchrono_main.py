@@ -14,13 +14,34 @@ from __future__ import annotations
 import sys
 
 
+def _unbuffer_std_streams() -> None:
+    """Make this worker's stdout/stderr flush on every write.
+
+    A PyInstaller-frozen interpreter **ignores ``PYTHONUNBUFFERED``** and
+    block-buffers a child's stdout when it's a pipe. A capture bridge runs for
+    minutes without exiting, so its one-line readiness signal (``… is live``)
+    sits unflushed in that buffer and never reaches the parent supervisor's pipe
+    within the readiness window — staging then times out *even though the LSL
+    stream is already live* (confirmed on-hardware: all streams up, 0 bytes of
+    bridge stdout seen). ``write_through=True`` forces each write straight
+    through. Guarded: a windowed build may expose ``None``/non-reconfigurable
+    streams, in which case there's nothing to flush anyway."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(line_buffering=True, write_through=True)
+        except Exception:
+            pass
+
+
 def _main() -> int:
     argv = sys.argv[1:]
     if argv and argv[0] == "--run-postprocess":
+        _unbuffer_std_streams()
         from sensorchrono.orchestration.postprocess_runner import _main as pp_main
 
         return pp_main(argv[1:])
     if argv and argv[0] == "--run-bridge":
+        _unbuffer_std_streams()  # critical: supervisor reads readiness from this stdout
         import importlib
 
         module = importlib.import_module(argv[1])
