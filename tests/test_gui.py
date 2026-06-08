@@ -51,6 +51,61 @@ def test_setup_advances_to_preflight(app, tmp_path):
     assert w.preflight._proceed.isEnabled()
 
 
+def test_setup_apply_collects_device_bindings(app, tmp_path):
+    # The whole point of the fix: a real run must be able to gather bindings
+    # from the SETUP page so validate() passes.
+    w = MainWindow(_session(tmp_path, dry_run=False))
+    w.setup.shimmer_port.setCurrentText("COM7")
+    w.setup.camera_index.setCurrentText("2")
+    w.setup.mic_device.setCurrentText("(system default)")
+    w.setup.apply_to(w._base_session)
+    b = w._base_session.bindings
+    assert b.shimmer_com_port == "COM7"
+    assert b.shimmer_ecg_port == "COM7"
+    assert b.camera_index == 2
+    assert b.mic_device is None
+    w._base_session.validate()  # real capture with bindings now validates
+
+
+def test_setup_bindings_group_disabled_in_dry_run(app, tmp_path):
+    w = MainWindow(_session(tmp_path, dry_run=True))
+    w.setup.load(w._base_session)
+    assert not w.setup.bindings_group.isEnabled()
+    w.setup.dry_run.setChecked(False)
+    assert w.setup.bindings_group.isEnabled()
+
+
+def test_setup_load_restores_saved_bindings(app, tmp_path):
+    from sensorchrono.config import DeviceBindings
+
+    saved = _session(
+        tmp_path, dry_run=False,
+        bindings=DeviceBindings(shimmer_com_port="COM9", camera_index=1, mic_device=3),
+    )
+    w = MainWindow(_session(tmp_path))
+    w.setup.load(saved)
+    assert w.setup.shimmer_port.currentText() == "COM9"
+    assert w.setup.camera_index.currentText() == "1"
+    assert w.setup._parse_mic(w.setup.mic_device.currentText()) == 3
+
+
+def test_session_persist_round_trip(app, tmp_path, monkeypatch):
+    from sensorchrono.config import DeviceBindings, SessionConfig, user_config_path
+    from sensorchrono.ui.main_window import _load_or_default_session
+
+    monkeypatch.setenv("SENSORCHRONO_CONFIG", str(tmp_path / "cfg.yaml"))
+    cfg = SessionConfig(
+        participant="p01", session="s1", task="rest", duration_s=30,
+        out_dir=tmp_path / "o", dry_run=False,
+        bindings=DeviceBindings(shimmer_com_port="COM3", camera_index=0),
+    )
+    cfg.save(user_config_path())
+    loaded = _load_or_default_session()
+    assert loaded.bindings.shimmer_com_port == "COM3"
+    assert loaded.bindings.camera_index == 0
+    assert loaded.dry_run is False
+
+
 def test_invalid_config_keeps_setup_and_shows_error(app, tmp_path):
     w = MainWindow(_session(tmp_path))
     w.setup.participant.setText("")  # empty -> ConfigError

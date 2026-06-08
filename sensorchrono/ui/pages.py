@@ -6,12 +6,16 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtWidgets
 
+from sensorchrono.config import DeviceBindings
+from sensorchrono.orchestration import device_scan
 from sensorchrono.ui.video_preview import VideoPreview
 from sensorchrono.ui.waveform import AudioLevelMeter, WaveformWidget
 
 _OK = "✓"
 _WARN = "!"
 _FAIL = "✗"
+
+_MIC_DEFAULT = "(system default)"
 
 
 class SetupPage(QtWidgets.QWidget):
@@ -27,6 +31,7 @@ class SetupPage(QtWidgets.QWidget):
         self.duration.setRange(5, 14400)
         self.duration.setSuffix(" s")
         self.dry_run = QtWidgets.QCheckBox("dry run (synthetic streams, no hardware)")
+        self.dry_run.toggled.connect(self._on_dry_run_toggled)
         self.out_dir = QtWidgets.QLabel()
         self.out_dir.setStyleSheet("color:#888;")
         form.addRow("Participant", self.participant)
@@ -35,6 +40,8 @@ class SetupPage(QtWidgets.QWidget):
         form.addRow("Duration", self.duration)
         form.addRow("", self.dry_run)
         form.addRow("Output dir", self.out_dir)
+
+        self.bindings_group = self._build_bindings_group()
 
         self.error = QtWidgets.QLabel()
         self.error.setStyleSheet("color:#d44;")
@@ -45,9 +52,87 @@ class SetupPage(QtWidgets.QWidget):
         lay = QtWidgets.QVBoxLayout(self)
         lay.addWidget(QtWidgets.QLabel("<h2>Set up recording</h2>"))
         lay.addLayout(form)
+        lay.addWidget(self.bindings_group)
         lay.addWidget(self.error)
         lay.addStretch(1)
         lay.addWidget(start, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
+
+        # Cheap, non-intrusive scans (COM ports + mics) at construction; cameras
+        # are only probed when the operator clicks "Rescan devices".
+        self._populate_devices(probe_cameras=False)
+
+    # -- device bindings ----------------------------------------------------
+    def _build_bindings_group(self) -> QtWidgets.QGroupBox:
+        group = QtWidgets.QGroupBox("Hardware bindings (real capture)")
+        bform = QtWidgets.QFormLayout()
+        self.shimmer_port = QtWidgets.QComboBox()
+        self.shimmer_port.setEditable(True)
+        self.shimmer_port.setToolTip(
+            "COM port the Shimmer is paired on (Bluetooth shows up as a "
+            "'Standard Serial over Bluetooth link' port)."
+        )
+        self.camera_index = QtWidgets.QComboBox()
+        self.camera_index.setEditable(True)
+        self.camera_index.setToolTip("OpenCV camera index for the webcam (usually 0).")
+        self.mic_device = QtWidgets.QComboBox()
+        self.mic_device.setEditable(True)
+        self.mic_device.setToolTip("Audio input device for the mic; leave on system default if unsure.")
+        self.rescan_devices = QtWidgets.QPushButton("Rescan devices")
+        self.rescan_devices.clicked.connect(lambda: self._populate_devices(probe_cameras=True))
+        bform.addRow("Shimmer COM port", self.shimmer_port)
+        bform.addRow("Camera index", self.camera_index)
+        bform.addRow("Microphone", self.mic_device)
+        bform.addRow("", self.rescan_devices)
+        group.setLayout(bform)
+        return group
+
+    def _populate_devices(self, *, probe_cameras: bool) -> None:
+        """(Re)fill the binding dropdowns from a hardware scan, preserving any
+        value the operator already chose and falling back to sensible defaults."""
+        prev_port = self.shimmer_port.currentText().strip()
+        prev_cam = self.camera_index.currentText().strip()
+        prev_mic = self.mic_device.currentText().strip()
+
+        ports = device_scan.serial_ports()
+        self.shimmer_port.clear()
+        self.shimmer_port.addItems([p.device for p in ports])
+        # Prefer the operator's prior pick, else the first (Bluetooth-first) port.
+        self.shimmer_port.setCurrentText(prev_port or (ports[0].device if ports else ""))
+
+        cams = device_scan.cameras() if probe_cameras else []
+        self.camera_index.clear()
+        self.camera_index.addItems([str(i) for i in cams] or ["0", "1", "2", "3"])
+        self.camera_index.setCurrentText(prev_cam or (str(cams[0]) if cams else "0"))
+
+        self.mic_device.clear()
+        self.mic_device.addItem(_MIC_DEFAULT, None)
+        for m in device_scan.microphones():
+            self.mic_device.addItem(f"{m.index}: {m.name}", m.index)
+        self.mic_device.setCurrentText(prev_mic or _MIC_DEFAULT)
+
+    @staticmethod
+    def _parse_mic(text: str):
+        text = text.strip()
+        if not text or text == _MIC_DEFAULT:
+            return None
+        head = text.split(":", 1)[0].strip()
+        return int(head) if head.isdigit() else text
+
+    def _bindings_from_fields(self) -> DeviceBindings:
+        port = self.shimmer_port.currentText().strip() or None
+        cam_text = self.camera_index.currentText().strip()
+        camera = int(cam_text) if cam_text.isdigit() else None
+        return DeviceBindings(
+            shimmer_com_port=port,
+            shimmer_ecg_port=port,  # the BT COM port doubles as the ECG bridge port
+            camera_index=camera,
+            mic_device=self._parse_mic(self.mic_device.currentText()),
+        )
+
+    def _on_dry_run_toggled(self, checked: bool) -> None:
+        # Bindings are only required for real capture; grey them out in dry-run
+        # so the synthetic path stays one-click.
+        self.bindings_group.setEnabled(not checked)
 
     def load(self, session) -> None:
         self.participant.setText(session.participant)
@@ -56,6 +141,14 @@ class SetupPage(QtWidgets.QWidget):
         self.duration.setValue(int(session.duration_s))
         self.dry_run.setChecked(bool(session.dry_run))
         self.out_dir.setText(str(session.out_dir))
+        b = session.bindings
+        if b.shimmer_com_port:
+            self.shimmer_port.setCurrentText(str(b.shimmer_com_port))
+        if b.camera_index is not None:
+            self.camera_index.setCurrentText(str(b.camera_index))
+        if b.mic_device is not None:
+            self.mic_device.setCurrentText(str(b.mic_device))
+        self._on_dry_run_toggled(bool(session.dry_run))
         self.error.clear()
 
     def apply_to(self, session) -> None:
@@ -64,6 +157,7 @@ class SetupPage(QtWidgets.QWidget):
         session.task = self.task.text().strip()
         session.duration_s = int(self.duration.value())
         session.dry_run = self.dry_run.isChecked()
+        session.bindings = self._bindings_from_fields()
 
     def show_error(self, message: str) -> None:
         self.error.setText(message)

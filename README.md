@@ -38,8 +38,11 @@ installer; the source and build pipeline are in this repo under `build/` and
 ## Quick start (installed app)
 
 1. Launch **SensorChrono** from the Start menu / desktop shortcut.
-2. **Select equipment** — tick the modalities you're recording; the wizard finds
-   the Shimmer COM port, camera, and mic.
+2. **Set up recording** — enter participant / session / task / duration. Leave
+   *dry run* unticked for a real capture, then under **Hardware bindings** pick the
+   auto-detected **Shimmer COM port**, **camera index**, and **microphone**
+   (**Rescan devices** re-scans, including probing for cameras). The choices persist
+   to `~/.sensorchrono/config.yaml`, so you bind the rig once.
 3. **Liveness check** — every selected stream must show live traffic before you
    can proceed (this is the structural fix for "forgot to tick a stream").
 4. **Calibrate** — perform the 30-second calibration block: **10–20 firm spacebar

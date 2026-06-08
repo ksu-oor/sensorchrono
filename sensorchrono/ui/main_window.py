@@ -16,7 +16,7 @@ from pathlib import Path
 
 from PySide6 import QtCore, QtWidgets
 
-from sensorchrono.config import ConfigError, SessionConfig, default_dry_run
+from sensorchrono.config import ConfigError, SessionConfig, default_dry_run, user_config_path
 from sensorchrono.contract import StreamName
 from sensorchrono.orchestration.lsl_monitor import LslMonitor
 from sensorchrono.orchestration.session import SessionController, SessionState
@@ -198,11 +198,21 @@ class MainWindow(QtWidgets.QMainWindow):
     # -- transitions (page actions) ----------------------------------------
     def _start_session(self) -> None:
         self.setup.apply_to(self._base_session)
+        self._persist_session()  # remember device bindings for next launch
         self._build_controller(self._base_session)
         try:
             self.controller.run_preflight()
         except ConfigError as exc:
             self.setup.show_error(str(exc))
+
+    def _persist_session(self) -> None:
+        """Best-effort: save the chosen session (incl. device bindings) so an
+        admin binds the hardware once and later launches reload it. A failure to
+        write must never block starting a recording."""
+        try:
+            self._base_session.save(user_config_path())
+        except Exception:
+            pass
 
     def _go_staging(self) -> None:
         self.controller.start_staging()
@@ -306,14 +316,27 @@ class MainWindow(QtWidgets.QMainWindow):
         super().closeEvent(event)
 
 
+def _load_or_default_session() -> SessionConfig:
+    """Reload the last saved session (device bindings included) if one exists,
+    else seed a fresh default. A malformed saved config degrades to the default
+    rather than crashing the app on launch."""
+    path = user_config_path()
+    if path.exists():
+        try:
+            return SessionConfig.load(path)
+        except Exception:
+            pass
+    return SessionConfig(
+        participant="p01", session="s1", task="rest", duration_s=60,
+        out_dir=Path.home() / "sensorchrono_out", dry_run=default_dry_run(),
+    )
+
+
 def run(argv: list[str] | None = None) -> int:
     import sys
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv if argv is None else argv)
-    session = SessionConfig(
-        participant="p01", session="s1", task="rest", duration_s=60,
-        out_dir=Path.home() / "sensorchrono_out", dry_run=default_dry_run(),
-    )
+    session = _load_or_default_session()
     win = MainWindow(session)
     win.resize(960, 640)
     win.show()
