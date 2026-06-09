@@ -1,7 +1,9 @@
 """Audio capture LSL bridge.
 
-Captures PCM audio from the system default input device (e.g. BRIO mic)
-and publishes it to LSL as an `Audio` stream at the configured sample rate.
+Captures PCM audio from ANY input device the operator binds (by name substring
+or index via --device); with no --device it falls back to the system default
+input. Publishes to LSL as an `Audio` stream at the configured sample rate. Not
+tied to any particular microphone brand.
 
 Timestamping: each block of N samples gets a single LSL timestamp set to
 the LSL clock immediately after the sounddevice callback fired. Per-sample
@@ -37,7 +39,7 @@ def find_input_device(name_hint=None):
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default=None,
-                        help="Input device name substring (e.g. 'BRIO')")
+                        help="Input device name substring or index; omit for the system default input")
     parser.add_argument("--sample-rate", type=int, default=48000)
     parser.add_argument("--channels", type=int, default=1)
     parser.add_argument("--block-size", type=int, default=480,
@@ -62,7 +64,7 @@ def main(argv=None):
         channel_count=args.channels,
         nominal_srate=float(args.sample_rate),
         channel_format=pylsl.cf_float32,
-        source_id="brio_mic",
+        source_id="sensorchrono_mic",
     )
     chns = info.desc().append_child("channels")
     for c in range(args.channels):

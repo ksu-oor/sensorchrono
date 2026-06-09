@@ -4,8 +4,8 @@
 walks an operator through a single safe workflow — *select equipment → liveness
 check → calibrate → record → auto post-process* — and produces a
 **drift-corrected, lag-calibrated, audit-certified** dataset from a Shimmer3
-ECG/EMG unit, a Logitech BRIO (video + mic), and a USB keyboard, all recorded to
-one `.xdf` via a bundled LabRecorder.
+ECG/EMG unit, **any UVC webcam and any input microphone** (operator-selected), and
+a USB keyboard, all recorded to one `.xdf` via a bundled LabRecorder.
 
 It wraps a proven Lab Streaming Layer (LSL) capture + analysis core (the
 `sensorchrono/bridges/` capture bridges and the `analysis/` pipeline) in a
@@ -127,8 +127,8 @@ also runs standalone: `analysis.recording_audit`, `analysis.shimmer_clock_model`
 | Modality | Device | LSL stream(s) |
 |---|---|---|
 | ECG / EMG | Shimmer3 EXG (Bluetooth) | `ShimmerECG` / `ShimmerEMG`, `ShimmerMarkers`, `ShimmerDiagnostics_ECG` |
-| Video | Logitech BRIO (UVC) | `VideoFrames` (+ `.mp4` + `frames.csv`) |
-| Audio | BRIO microphone | `Audio` (48 kHz) |
+| Video | Any UVC webcam (operator-selected index) | `VideoFrames` (+ `.mp4` + `frames.csv`) |
+| Audio | Any input device (operator-selected, or system default) | `Audio` (48 kHz) |
 | Fiducial | USB HID keyboard | `KeyboardFiducial` |
 
 Per-device calibration lives in `profiles/*.yaml`. Wiring details, electrode
