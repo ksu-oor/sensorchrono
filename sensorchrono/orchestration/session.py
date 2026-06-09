@@ -241,16 +241,31 @@ class SessionController:
         self._goto(SessionState.RECORD)
 
     def stop_recording(self, *, xdf_path: Path | None = None, mp4_path: Path | None = None) -> None:
-        """End capture: tear down the fleet + recorder, then post-process."""
+        """End capture and post-process in one call (headless/test convenience).
+
+        The GUI instead calls :meth:`end_capture` then :meth:`finish` so it can
+        render the "post-processing…" page before the (blocking) pipeline runs."""
+        self.end_capture()
+        self.finish(xdf_path=xdf_path, mp4_path=mp4_path)
+
+    def end_capture(self) -> None:
+        """Stop the fleet + recorder and enter POSTPROCESS. Fast (no analysis),
+        so the GUI can paint the progress page before :meth:`finish` blocks."""
         self._require(SessionState.RECORD)
         errors = self._teardown_capture()
         if errors:
             self.progress.emit("teardown issues: " + "; ".join(errors))
         self._goto(SessionState.POSTPROCESS)
+
+    def finish(self, *, xdf_path: Path | None = None, mp4_path: Path | None = None) -> None:
+        """Run the post-processing pipeline and enter DONE (or ERROR). The raw
+        recording is already safely on disk, so a pipeline failure is reported,
+        not silently swallowed."""
+        self._require(SessionState.POSTPROCESS)
         try:
             self.postprocess_result = self._do_postprocess(xdf_path, mp4_path)
             self._goto(SessionState.DONE)
-        except Exception as exc:  # recording is already safely saved; report
+        except Exception as exc:
             self.fail(f"post-processing failed: {exc}")
 
     def _do_postprocess(self, xdf_path: Path | None, mp4_path: Path | None) -> PostprocessResult | None:

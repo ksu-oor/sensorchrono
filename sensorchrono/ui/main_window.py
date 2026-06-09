@@ -150,7 +150,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.liveness = LivenessPage()
         self.calibrate = CalibratePage()
         self.record = RecordPage()
-        self.postprocess = QtWidgets.QLabel("post-processing…", alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.postprocess = QtWidgets.QLabel(
+            "Step 6 · Aligning & cleaning your dataset…\n(drift correction + lag subtraction)",
+            alignment=QtCore.Qt.AlignmentFlag.AlignCenter,
+        )
         self.done = DonePage()
         self.error = ErrorPage()
         self._pages = {
@@ -173,6 +176,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.calibrate.done_calibration.connect(self._to_recording)
         self.record.stop_record.connect(self._stop_recording)
         self.done.start_another.connect(self._restart)
+        self.done.open_output.connect(self._open_output_folder)
         self.error.retry.connect(self._retry)
         self.error.abort.connect(self._abort)
 
@@ -280,8 +284,46 @@ class MainWindow(QtWidgets.QMainWindow):
         self.controller.to_recording(allow_uncalibrated=allow_uncalibrated)
 
     def _stop_recording(self) -> None:
-        mp4 = None  # real captures pass the camera adapter's mp4_path here (Phase 5)
-        self.controller.stop_recording(xdf_path=None, mp4_path=mp4)
+        # Two-step so the "post-processing…" page paints before the blocking
+        # pipeline runs: end capture (fast) -> render -> finish (analysis).
+        self.controller.end_capture()
+        QtWidgets.QApplication.processEvents()
+        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
+        try:
+            self.controller.finish(xdf_path=self._recorded_xdf(), mp4_path=self._recorded_mp4())
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+
+    def _open_output_folder(self) -> None:
+        from PySide6 import QtGui
+
+        out = Path(self._base_session.out_dir)
+        try:
+            out.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(out)))
+
+    def _recorded_xdf(self) -> Path | None:
+        """The .xdf LabRecorder just wrote, found as the newest under the
+        session's output dir (the app sets LabRecorder's StudyRoot there). None
+        in dry-run or if the operator drove LabRecorder to a different folder."""
+        if self._base_session.dry_run:
+            return None
+        try:
+            out = Path(self._base_session.out_dir)
+            xdfs = sorted(out.rglob("*.xdf"), key=lambda p: p.stat().st_mtime, reverse=True)
+            return xdfs[0] if xdfs else None
+        except Exception:
+            return None
+
+    def _recorded_mp4(self) -> Path | None:
+        if self._base_session.dry_run:
+            return None
+        from sensorchrono.devices.camera import CameraAdapter
+
+        p = CameraAdapter().mp4_path(self._base_session)
+        return p if p.exists() else None
 
     def _restart(self) -> None:
         if self.controller is not None:

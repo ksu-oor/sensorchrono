@@ -205,6 +205,47 @@ def test_done_page_summary(app, tmp_path):
     assert "p01" in text and ("ok" in text or "PASS" in text)
 
 
+def test_done_page_shows_output_folder_and_open_button(app, tmp_path):
+    w = MainWindow(_session(tmp_path))
+    w._build_controller(w._base_session)
+    w.controller.calibrated = True
+    w.controller.postprocess_result = PostprocessResult(overall_status="ok", audit_verdict="PASS")
+    w.done.show_summary(w.controller)
+    assert "aligned" in w.done.summary.text().lower()
+    assert str(w._base_session.out_dir) in w.done.out_dir_label.text()
+    assert w.done._open.isEnabled()
+    fired = []
+    w.done.open_output.connect(lambda: fired.append(True))
+    w.done._open.click()
+    assert fired  # the Open output folder button emits
+
+
+def test_recorded_xdf_picks_newest_under_out_dir(app, tmp_path):
+    import os
+    import time
+
+    from sensorchrono.config import DeviceBindings
+
+    out = tmp_path / "o"
+    out.mkdir()
+    w = MainWindow(_session(
+        tmp_path, dry_run=False, out_dir=out,
+        bindings=DeviceBindings(shimmer_com_port="COM3", camera_index=0),
+    ))
+    (out / "old.xdf").write_bytes(b"x")
+    time.sleep(0.05)
+    newest = out / "new.xdf"
+    newest.write_bytes(b"xx")
+    os.utime(newest, None)  # bump mtime to now
+    assert w._recorded_xdf() == newest
+
+
+def test_recorded_xdf_none_in_dry_run(app, tmp_path):
+    w = MainWindow(_session(tmp_path, dry_run=True))
+    assert w._recorded_xdf() is None
+    assert w._recorded_mp4() is None
+
+
 def test_close_event_tears_down_controller(app, tmp_path):
     w = MainWindow(_session(tmp_path))
     w._build_controller(w._base_session)
