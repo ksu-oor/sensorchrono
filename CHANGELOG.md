@@ -1,5 +1,31 @@
 # LSL Sync Lab Notebook
 
+## 2026-06-09 (end of day) — auto post-processing baked in + clearer step-by-step UX
+
+Closed the loop so the app delivers the **cleansed, time-aligned dataset** itself,
+and made the operator journey legible end to end.
+
+- **Auto post-processing as the final step.** The app previously stopped recording
+  with `xdf_path=None`, so the pipeline was always skipped. Now `MainWindow`
+  locates the just-written `.xdf` (newest under the session output dir — where the
+  app points LabRecorder's StudyRoot) and the `.mp4`, and runs the full pipeline
+  (dejitter → clock model → **subtract the measured audio/video lag** → unified
+  table + frame map → residual certification). Verified on the real recording:
+  post-correction residual **0.0 ms median** for both audio and video.
+- **FSM split** `stop_recording` → `end_capture()` + `finish()` so the GUI paints
+  the "Step 6 · Aligning & cleaning…" page (with a wait cursor) before the
+  blocking pipeline runs, instead of freezing on the Record page. `stop_recording`
+  is kept as a headless/test convenience that calls both.
+- **Done page** now headlines "✓ Corrected, time-aligned dataset written", shows
+  the **output folder path**, and has an **📂 Open output folder** button.
+- **Numbered, instructional step headers** on every page (Step 1 Set up → 2
+  Preflight → 3 Staging → 4 Calibration → 5 Recording → 6 Aligning → 7 Done), each
+  with a one-line "what to do next", so the flow reads connect-devices → cleansed
+  files without guesswork.
+
+Tests: `end_capture`/`finish` split + `finish` state guard; Done-page output
+folder + open-button signal; `_recorded_xdf` newest-file locator (+ dry-run None).
+
 ## 2026-06-09 (later still) — clarify: camera + mic are device-agnostic
 
 Confirmed and documented that **video and audio are NOT tied to any particular

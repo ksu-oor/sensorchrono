@@ -74,6 +74,34 @@ def test_full_happy_path(tmp_path):
     ]
 
 
+def test_end_capture_then_finish_split(tmp_path):
+    # The GUI ends capture (fast, -> POSTPROCESS) and only then runs the pipeline,
+    # so it can paint the "post-processing…" page before finish() blocks.
+    result = PostprocessResult(overall_status="ok", audit_verdict="PASS")
+    c = SessionController(
+        _session(tmp_path), adapters=default_simulated_fleet(),
+        recorder=_FakeRecorder(), postprocess_fn=lambda xdf, mp4: result,
+    )
+    c.run_preflight(); c.start_staging(); c.start_calibration()
+    for t in range(12):
+        c.note_fiducial(float(t))
+    c.to_recording()
+    c.end_capture()
+    assert c.state == SessionState.POSTPROCESS and c.postprocess_result is None
+    c.finish()
+    assert c.state == SessionState.DONE and c.postprocess_result is result
+
+
+def test_finish_requires_postprocess_state(tmp_path):
+    import pytest
+
+    from sensorchrono.orchestration.session import InvalidTransition
+
+    c = SessionController(_session(tmp_path), adapters=default_simulated_fleet())
+    with pytest.raises(InvalidTransition):
+        c.finish()  # not in POSTPROCESS
+
+
 def test_invalid_transition_out_of_order(tmp_path):
     c = SessionController(_session(tmp_path), adapters=default_simulated_fleet())
     with pytest.raises(InvalidTransition):
