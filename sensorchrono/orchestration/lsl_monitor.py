@@ -55,10 +55,20 @@ def compute_stream_liveness(
     if measured_channels and measured_channels != spec.channels:
         problems.append(f"channels {measured_channels}!={spec.channels}")
     if not is_marker:
-        if measured_rate < RATE_OK_FRACTION * expected_rate:
+        # Rate-aware tolerances. The monitor polls in a short (~0.5 s) window, so
+        # a fixed gap limit and rate floor are wrong for LOW-rate streams: the
+        # 1 Hz ShimmerDiagnostics_ECG has ~1 s gaps *by definition* and shows 0
+        # samples in most polls, so the old fixed 0.5 s gap limit + rate floor
+        # made it permanently "unhealthy" — which kept the staging gate red and
+        # the "Go to Recording" button disabled forever. Scale the gap limit to
+        # the nominal period, and only enforce the rate floor when the window is
+        # long enough to actually observe the nominal rate (≥ ~2 expected samples).
+        period = 1.0 / expected_rate
+        gap_limit = max(GAP_LIMIT_S, 3.0 * period)
+        if window_s * expected_rate >= 2.0 and measured_rate < RATE_OK_FRACTION * expected_rate:
             problems.append(f"rate {measured_rate:.1f}<{RATE_OK_FRACTION:.0%} of {expected_rate:.0f}Hz")
-        if max_gap_s > GAP_LIMIT_S:
-            problems.append(f"gap {max_gap_s*1000:.0f}ms>{GAP_LIMIT_S*1000:.0f}ms")
+        if max_gap_s > gap_limit:
+            problems.append(f"gap {max_gap_s*1000:.0f}ms>{gap_limit*1000:.0f}ms")
 
     return StreamLiveness(
         name=spec.name,

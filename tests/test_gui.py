@@ -152,6 +152,23 @@ def test_video_preview_show_status_clears_frame(app):
     assert vp.pixmap().isNull()  # the prior frame is cleared
 
 
+def test_video_preview_show_image_file(app, tmp_path):
+    # A real image on disk (as the camera bridge drops ~2x/s) must display; a bad
+    # path must return False so the caller can fall back to the status line.
+    from PySide6 import QtGui
+
+    vp = VideoPreview()
+    vp.resize(320, 180)
+    arr = np.zeros((90, 160, 3), dtype=np.uint8)
+    arr[:, :, 1] = 200  # green test frame
+    qimg = QtGui.QImage(arr.data, 160, 90, 3 * 160, QtGui.QImage.Format.Format_RGB888).copy()
+    img = tmp_path / "preview.png"
+    assert qimg.save(str(img))
+    assert vp.show_image_file(img) is True
+    assert not vp.pixmap().isNull()
+    assert vp.show_image_file(tmp_path / "nope.jpg") is False
+
+
 def test_liveview_plots_varying_ecg_channel_not_constant_ch0(app):
     from sensorchrono.ui.main_window import LiveView
     from sensorchrono.ui.pages import LivenessPage

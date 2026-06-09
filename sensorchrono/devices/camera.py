@@ -22,6 +22,10 @@ class CameraAdapter(BridgeAdapter):
             "--duration", f"{self._duration(session):.0f}",
             "--out-dir", str(session.out_dir),
             "--tag", session_tag(session),
+            # Live preview for the staging page: the GUI can't open the camera
+            # (this bridge holds it), so the bridge drops a small JPEG here ~2x/s.
+            "--preview-path", str(self.preview_path(session)),
+            "--preview-fps", "2",
         ]
         if session.bindings.camera_index is not None:
             args += ["--device", str(session.bindings.camera_index)]
@@ -31,3 +35,7 @@ class CameraAdapter(BridgeAdapter):
         """Where the bridge writes the .mp4 (post-processing needs this).
         The bridge derives it as ``{out_dir}/{tag}_video.mp4``."""
         return Path(session.out_dir) / f"{session_tag(session)}_video.mp4"
+
+    def preview_path(self, session) -> Path:
+        """Where the bridge writes the live preview JPEG the GUI polls."""
+        return Path(session.out_dir) / f"{session_tag(session)}_preview.jpg"

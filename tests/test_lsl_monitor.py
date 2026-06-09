@@ -11,6 +11,7 @@ from sensorchrono.orchestration.lsl_monitor import compute_stream_liveness
 
 ECG = STREAM_SPECS[StreamName.SHIMMER_ECG]  # 4ch @ 256 Hz
 KB = STREAM_SPECS[StreamName.KEYBOARD_FIDUCIAL]  # marker, rate 0
+DIAG = STREAM_SPECS[StreamName.SHIMMER_DIAGNOSTICS_ECG]  # 5ch @ 1 Hz
 
 
 def test_present_full_rate_ok():
@@ -41,6 +42,23 @@ def test_big_gap_not_ok():
 def test_marker_present_ok_regardless_of_rate_gap():
     r = compute_stream_liveness(KB, present=True, n_samples=0, window_s=1.0, max_gap_s=10.0, measured_channels=1)
     assert r.ok  # markers are judged on presence alone
+
+
+def test_low_rate_stream_ok_with_sparse_window():
+    # Regression: a 1 Hz stream (ShimmerDiagnostics_ECG) shows 0 samples in most
+    # 0.5 s polls and ~1 s gaps by definition. It MUST still rate as healthy,
+    # else the staging gate never goes green and "Go to Recording" stays disabled.
+    r = compute_stream_liveness(DIAG, present=True, n_samples=0, window_s=0.5, max_gap_s=1.0, measured_channels=5)
+    assert r.ok, r.note
+    r2 = compute_stream_liveness(DIAG, present=True, n_samples=1, window_s=0.5, max_gap_s=1.2, measured_channels=5)
+    assert r2.ok, r2.note
+
+
+def test_low_rate_stream_stalled_still_fails():
+    # A genuinely stalled 1 Hz stream (gap far beyond a few nominal periods) is
+    # still caught — the gate stays meaningful, it's just rate-aware now.
+    r = compute_stream_liveness(DIAG, present=True, n_samples=0, window_s=0.5, max_gap_s=10.0, measured_channels=5)
+    assert not r.ok and "gap" in r.note
 
 
 def test_monitor_resolves_real_simulated_stream(tmp_path):

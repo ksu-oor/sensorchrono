@@ -90,6 +90,34 @@ def create_outlet(target_fps):
     return outlet
 
 
+def _write_preview_jpeg(path, frame):
+    """Atomically write a small JPEG snapshot for the app's live preview.
+
+    The GUI can't open the camera (this bridge holds it exclusively), so it polls
+    this file to show the operator a live, low-rate view. Best-effort: preview I/O
+    must never disrupt capture, and the write is atomic (tmp + os.replace) so the
+    GUI never reads a half-written frame."""
+    import os
+
+    try:
+        h, w = frame.shape[:2]
+        tw = 320
+        th = max(1, int(round(h * tw / w)))
+        small = cv2.resize(frame, (tw, th))
+        # Encode to JPEG bytes explicitly: cv2.imwrite infers the codec from the
+        # file extension, so writing to a "*.tmp" temp name silently fails. Encode
+        # then write bytes to the temp file and atomically rename into place.
+        ok, buf = cv2.imencode(".jpg", small, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+        if not ok:
+            return
+        tmp = f"{path}.tmp"
+        with open(tmp, "wb") as fh:
+            fh.write(buf.tobytes())
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", type=int, default=DEFAULTS["device"])
@@ -104,6 +132,11 @@ def main(argv=None):
     parser.add_argument("--tag", default="exp02")
     parser.add_argument("--preview", action="store_true",
                         help="Show a low-rate preview window (consumes CPU).")
+    parser.add_argument("--preview-path", default=None,
+                        help="If set, atomically write a small JPEG here at --preview-fps "
+                             "so the app can show a live camera preview while capturing.")
+    parser.add_argument("--preview-fps", type=float, default=2.0,
+                        help="JPEG snapshots/sec written to --preview-path (default 2).")
     args = parser.parse_args(argv)
 
     out_dir = Path(args.out_dir)
@@ -140,6 +173,8 @@ def main(argv=None):
     frame_idx = 0
     dropped = 0
     last_print = t_start
+    preview_dt = (1.0 / args.preview_fps) if (args.preview_path and args.preview_fps > 0) else 0.0
+    last_preview = 0.0
     print("[video] streaming...")
 
     try:
@@ -168,6 +203,11 @@ def main(argv=None):
                 print(f"[video] t={elapsed:6.1f}s  frames={frame_idx:6d}  "
                       f"eff_fps={fps_eff:5.2f}  dropped={dropped}")
                 last_print = t_read
+
+            # Low-rate JPEG snapshot for the app's live preview (atomic write).
+            if preview_dt and (t_read - last_preview) >= preview_dt:
+                _write_preview_jpeg(args.preview_path, frame)
+                last_preview = t_read
 
             if args.preview and frame_idx % 5 == 0:
                 cv2.imshow("preview", cv2.resize(frame, (640, 360)))

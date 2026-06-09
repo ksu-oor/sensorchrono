@@ -42,10 +42,12 @@ class LiveView(QtCore.QObject):
     """Pull ECG/audio off LSL and push synthetic video into the staging widgets
     via a GUI-thread QTimer. Best-effort: degrades silently without pylsl."""
 
-    def __init__(self, page: LivenessPage, *, dry_run: bool, fps: int = 30) -> None:
+    def __init__(self, page: LivenessPage, *, dry_run: bool, fps: int = 30,
+                 preview_path=None) -> None:
         super().__init__()
         self._page = page
         self._dry_run = dry_run
+        self._preview_path = preview_path  # JPEG the camera bridge drops ~2x/s
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(int(1000 / fps))
         self._timer.timeout.connect(self._tick)
@@ -106,17 +108,30 @@ class LiveView(QtCore.QObject):
             self._page.preview.set_frame(synthetic_frame(time.monotonic() - self._t0))
         else:
             # Real capture: the recording bridge holds the camera exclusively, so
-            # a live pixel preview is impossible. Show honest feedback that frames
-            # are flowing rather than a misleading synthetic image.
+            # the GUI can't open it. The bridge instead drops a small JPEG ~2x/s;
+            # show it for a genuine live view, falling back to a status line until
+            # the first snapshot lands (or if it goes stale).
             if self._video is not None:
                 frames, _ = self._video.pull_chunk(timeout=0.0, max_samples=512)
                 if frames:
                     self._video_frames += len(frames)
-            self._page.preview.show_status(
-                "● Recording to file\n"
-                "(live camera preview unavailable while capturing)\n"
-                f"{self._video_frames} frames captured"
-            )
+            shown = False
+            if self._preview_path is not None:
+                try:
+                    import os
+                    import time as _time
+
+                    p = str(self._preview_path)
+                    if os.path.exists(p) and (_time.time() - os.path.getmtime(p)) < 3.0:
+                        shown = self._page.preview.show_image_file(p)
+                except Exception:
+                    shown = False
+            if not shown:
+                self._page.preview.show_status(
+                    "● Recording to file\n"
+                    f"{self._video_frames} frames captured\n"
+                    "(camera preview starting…)"
+                )
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -325,8 +340,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # -- live feed + key capture -------------------------------------------
     def _start_live(self) -> None:
-        if self._live is None:
-            self._live = LiveView(self.liveness, dry_run=self._base_session.dry_run)
+        if self._live is not None:
+            self._live.stop()  # recreate per session so the preview path is current
+        preview_path = None
+        if not self._base_session.dry_run:
+            from sensorchrono.devices.camera import CameraAdapter
+
+            preview_path = CameraAdapter().preview_path(self._base_session)
+        self._live = LiveView(
+            self.liveness, dry_run=self._base_session.dry_run, preview_path=preview_path
+        )
         self._live.start()
 
     def _stop_live(self) -> None:
