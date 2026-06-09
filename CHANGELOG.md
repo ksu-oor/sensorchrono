@@ -1,5 +1,30 @@
 # LSL Sync Lab Notebook
 
+## 2026-06-09 (later still) — clarify: camera + mic are device-agnostic
+
+Confirmed and documented that **video and audio are NOT tied to any particular
+device** — the Logitech BRIO was only the local test rig. The capture was already
+generic (the camera is the operator-selected `--device` index; the mic is the
+selected device by name/index, or the system default — the audio bridge only
+ever used the BRIO because it was this machine's *default* input, not via any
+hardcoding). The only BRIO traces were cosmetic, and they're now removed:
+
+- **`video_lsl_bridge.py`:** stream `source_id` `brio_video` → `sensorchrono_video`;
+  metadata manufacturer `Logitech`/model `BRIO` → generic `generic-UVC` (these are
+  descriptive XDF metadata; analysis keys on the stream *name*, so nothing
+  downstream changes).
+- **`audio_lsl_bridge.py`:** `source_id` `brio_mic` → `sensorchrono_mic`; clarified
+  the docstring/`--device` help (any input device, or system default).
+- **Docs** (`README`, `CLAUDE.md`, `docs/HARDWARE.md`, `docs/SETUP_GUIDE.md`): the
+  hardware matrix now reads "any UVC webcam" / "any input device (operator-selected
+  or system default)", noting the BRIO was the reference unit. (The Shimmer bridge
+  remains device-specific by design — it speaks the Shimmer3 protocol.)
+
+Field note: a tap test showed the Shimmer's bare-lead inputs stopped responding
+(channel 1 railed = lead-off; tapping no longer deflected the channels) after the
+unit was re-plugged — i.e. the EXG lead cable needs re-seating. Capture/sync are
+unaffected; this is a hardware-connection issue, not software.
+
 ## 2026-06-09 (later) — unblock "Go to Recording" + a real live video preview
 
 On hardware the operator reported the **"Go to Recording" button never enabled**,

@@ -9,12 +9,13 @@ is the underlying reference for setup and troubleshooting.
 | Modality | Device | Connection | LSL stream(s) |
 |---|---|---|---|
 | ECG / EMG | Shimmer3 EXG | Bluetooth (COM port) | `ShimmerECG` / `ShimmerEMG`, `ShimmerMarkers`, `ShimmerDiagnostics_ECG` |
-| Video | Logitech BRIO | USB (UVC) | `VideoFrames` (+ `.mp4` + `frames.csv`) |
-| Audio | BRIO microphone | USB | `Audio` (48 kHz) |
+| Video | Any UVC webcam (operator-selected) | USB (UVC) | `VideoFrames` (+ `.mp4` + `frames.csv`) |
+| Audio | Any input device (operator-selected / default) | USB or built-in | `Audio` (48 kHz) |
 | Fiducial | USB HID keyboard | USB | `KeyboardFiducial` |
 
-> Requirements: a Shimmer3 EXG unit with a Bluetooth adapter; a BRIO (or any UVC
-> camera + audio input); a USB keyboard. SensorChrono's installer bundles
+> Requirements: a Shimmer3 EXG unit with a Bluetooth adapter; **any UVC webcam and
+> any audio input device** (a Logitech BRIO was only the reference test rig —
+> pick yours on the SETUP page); a USB keyboard. SensorChrono's installer bundles
 > LabRecorder, so no separate LSL recorder install is needed.
 
 ## Pair the Shimmer via Bluetooth

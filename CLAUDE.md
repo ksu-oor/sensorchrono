@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**SensorChrono** — a guided desktop app (PySide6 wizard) for time-aligned, multi-modal **Lab Streaming Layer (LSL) synchronization**. It captures streams from a Shimmer3 ECG/EMG unit, a Logitech BRIO (video + mic), and a USB keyboard, records them to one `.xdf` via a bundled LabRecorder, then post-processes that XDF into a **drift-corrected, lag-calibrated, audit-certified** dataset.
+**SensorChrono** — a guided desktop app (PySide6 wizard) for time-aligned, multi-modal **Lab Streaming Layer (LSL) synchronization**. It captures streams from a Shimmer3 ECG/EMG unit, **any operator-selected UVC webcam and input microphone** (video + audio), and a USB keyboard, records them to one `.xdf` via a bundled LabRecorder, then post-processes that XDF into a **drift-corrected, lag-calibrated, audit-certified** dataset. The camera (by `--device` index) and mic (by name/index, or system default) are **device-agnostic** — a Logitech BRIO was only the reference test rig. The Shimmer bridge is device-specific by design (it speaks the Shimmer3 protocol).
 
 The product is the `sensorchrono/` package; `analysis/` is the post-processing pipeline it drives. It ships as a Windows installer (PyInstaller one-folder + Inno Setup, built in CI — see `build/` and `.github/workflows/release.yml`) and is `pip install`-able from source. There IS a real package, a build step, and a `pytest` suite (`tests/`).
 
@@ -20,7 +20,7 @@ The product is the `sensorchrono/` package; `analysis/` is the post-processing p
 |---|---|
 | `shimmer_lsl_bridge.py` | `ShimmerECG` / `ShimmerEMG`, `ShimmerMarkers`, `ShimmerDiagnostics_*` |
 | `video_lsl_bridge.py` | `VideoFrames` (+ writes `.mp4` and `frames.csv`) |
-| `audio_lsl_bridge.py` | `Audio` (48 kHz from BRIO mic) |
+| `audio_lsl_bridge.py` | `Audio` (48 kHz from any selected input device) |
 | `keyboard_fiducial_bridge.py` | `KeyboardFiducial` (USB HID keystroke → LSL marker) |
 
 The bridges are run as subprocesses by the device adapters (`sensorchrono/devices/`). `sensorchrono/bridges/__init__.py` is **deliberately empty** — the bridges pull heavy platform deps (`serial`/`cv2`/`sounddevice`/`pynput`), so they are imported only when actually run, never at package import.

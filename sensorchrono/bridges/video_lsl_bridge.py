@@ -75,7 +75,9 @@ def create_outlet(target_fps):
         channel_count=2,
         nominal_srate=float(target_fps),
         channel_format=pylsl.cf_double64,
-        source_id="brio_video",
+        # Generic: the capture device is whatever UVC camera the operator bound
+        # (--device index). Not tied to any brand.
+        source_id="sensorchrono_video",
     )
     chns = info.desc().append_child("channels")
     for label, unit in [("frame_idx", "count"), ("cap_pos_ms", "milliseconds")]:
@@ -83,8 +85,7 @@ def create_outlet(target_fps):
         ch.append_child_value("label", label)
         ch.append_child_value("unit", unit)
         ch.append_child_value("type", "VideoFrames")
-    info.desc().append_child_value("manufacturer", "Logitech")
-    info.desc().append_child_value("model", "BRIO")
+    info.desc().append_child_value("manufacturer", "generic-UVC")
     outlet = pylsl.StreamOutlet(info, chunk_size=1, max_buffered=600)
     print(f"[video] LSL outlet 'VideoFrames' is live.")
     return outlet

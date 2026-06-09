@@ -19,14 +19,15 @@ run sessions with the [Operator Guide](USER_GUIDE.md).
 | Device | Setup |
 |---|---|
 | Shimmer3 EXG | Paired over Bluetooth → note the **outgoing COM port** (e.g. COM3). |
-| Logitech BRIO | USB3; gives both **camera** (a device index, usually 0) and **mic** (input device by name). |
+| Webcam (any UVC) | USB; provides the **camera** (a device index, usually 0). Any UVC webcam works — a Logitech BRIO was just the reference test unit. |
+| Microphone (any input device) | The **mic** (input device by name/index, or the system default). Any input device works. |
 | USB keyboard | Wired HID — used for the calibration fiducial. |
 | LabRecorder | Installed separately; see §4. |
 
 Find the bindings:
 - **COM port:** Device Manager → Ports (COM & LPT) → the Shimmer's *outgoing* port.
 - **Camera index:** usually `0`; if multiple cameras, try `0/1/2`.
-- **Mic device:** "Microphone (Logitech BRIO)" or its index.
+- **Mic device:** pick your input device by name (e.g. "Microphone (...)") or index, or leave blank for the system default.
 
 ## 3. Configure device bindings
 
