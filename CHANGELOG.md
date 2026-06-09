@@ -1,5 +1,33 @@
 # LSL Sync Lab Notebook
 
+## 2026-06-09 — matplotlib crash + staging-preview honesty
+
+Staging now passes on hardware (all six streams, real ECG), so the next round is
+robustness/UX of what the operator sees during a real run.
+
+- **Crash: `ModuleNotFoundError: No module named 'matplotlib'`** popped an
+  "unhandled exception in script" dialog from the frozen Shimmer bridge. The
+  bridge's post-capture `save_single_stream` / `save_synchronized` imported
+  matplotlib **first** to draw a PNG — but matplotlib is intentionally excluded
+  from the frozen build (`excludes=[... "matplotlib" ...]`), so it threw, and
+  because the import preceded the CSV write it *also* would have lost the CSV.
+  Fixed: **write the CSV first** (the source of truth), then attempt the PNG via a
+  new `_save_line_plot()` that guards the matplotlib import and any plotting error
+  (prints `[plot skipped: …]` instead of raising). The `main()` save step is also
+  wrapped so no side-file failure can ever surface as an exception dialog — the
+  real recording is the LSL/LabRecorder `.xdf` regardless.
+- **Staging ECG looked flatlined.** The live waveform plotted `ShimmerECG` channel
+  0, which is a constant status channel; the real leads are on ch2/ch3 (verified
+  live: ch0/ch1 std=0, ch2/ch3 std≈300). `LiveView` now auto-locks onto the
+  highest-variance channel (`_pick_ecg_channel`), so the operator sees the actual
+  heart trace. Capture was always fine — all channels are recorded.
+- **Staging video showed fake "color bars."** In real capture the recording bridge
+  holds the camera exclusively, so the GUI cannot open it for a live preview — it
+  was unconditionally drawing a synthetic gradient, which reads as a malfunction.
+  Now: dry-run keeps the synthetic animation; **real capture shows an honest
+  status** ("● Recording to file … N frames captured") driven by a `VideoFrames`
+  inlet, via new `VideoPreview.show_status()`. Tests added for all three.
+
 ## 2026-06-08 (later still) — the REAL staging blocker: frozen stdout is block-buffered
 
 With v1.0.3 (60 s timeout + fair readiness), the on-hardware run got further —

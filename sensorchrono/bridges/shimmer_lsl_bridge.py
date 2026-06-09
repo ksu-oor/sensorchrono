@@ -433,11 +433,41 @@ def stop_device(ser):
         pass
 
 
-def save_synchronized(ecg_out, emg_out):
-    import matplotlib
-    matplotlib.use('Agg')  # non-interactive backend, safe across threads
-    import matplotlib.pyplot as plt
+def _save_line_plot(plot_path, title, t_rel, named_channels):
+    """Best-effort PNG of ``named_channels`` (a list of ``(label, signal)``).
 
+    matplotlib is INTENTIONALLY excluded from the frozen Windows build (see
+    ``build/sensorchrono.spec``), so a missing import — or any plotting failure —
+    must NEVER crash the bridge. The CSV written by the caller is the source of
+    truth, and the analysis pipeline regenerates figures during post-processing.
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")  # non-interactive backend, safe across threads
+        import matplotlib.pyplot as plt
+    except Exception:
+        print(f"[plot skipped: matplotlib not bundled in this build] {plot_path}")
+        return
+    try:
+        fig, axes = plt.subplots(len(named_channels), 1,
+                                 figsize=(14, 3 * len(named_channels)), sharex=True)
+        if len(named_channels) == 1:
+            axes = [axes]
+        for ax, (name, signal) in zip(axes, named_channels):
+            ax.plot(t_rel, signal, linewidth=0.7)
+            ax.set_ylabel(f"{name}\n(mV)")
+            ax.grid(True, alpha=0.3)
+        axes[-1].set_xlabel("Time (s, LSL-aligned)")
+        fig.suptitle(title)
+        fig.tight_layout()
+        fig.savefig(plot_path, dpi=150)
+        plt.close(fig)
+        print(f"Saved {plot_path}")
+    except Exception as exc:  # never let a plotting hiccup take down the bridge
+        print(f"[plot skipped: {exc!r}] {plot_path}")
+
+
+def save_synchronized(ecg_out, emg_out):
     t_start = max(ecg_out['lsl_ts'][0], emg_out['lsl_ts'][0])
 
     t_ecg_rel = ecg_out['lsl_ts'] - t_start
@@ -445,26 +475,8 @@ def save_synchronized(ecg_out, emg_out):
     t_ecg_dev_rel = ecg_out['device_ts'] - ecg_out['device_ts'][0]
     t_emg_dev_rel = emg_out['device_ts'] - emg_out['device_ts'][0]
 
-    fig, axes = plt.subplots(5, 1, figsize=(14, 12), sharex=True)
-    for ax, (name, t_rel, sig) in zip(axes, [
-        ("Lead_I",   t_ecg_rel, ecg_out['Lead_I']),
-        ("Lead_II",  t_ecg_rel, ecg_out['Lead_II']),
-        ("Lead_III", t_ecg_rel, ecg_out['Lead_III']),
-        ("EMG_CH1",  t_emg_rel, emg_out['EMG_CH1']),
-        ("EMG_CH2",  t_emg_rel, emg_out['EMG_CH2']),
-    ]):
-        ax.plot(t_rel, sig, linewidth=0.7)
-        ax.set_ylabel(f"{name}\n(mV)")
-        ax.grid(True, alpha=0.3)
-    axes[-1].set_xlabel("Time (s, LSL-aligned)")
-    fig.suptitle("Synchronized ECG + EMG (LSL-aligned)")
-    fig.tight_layout()
-    path = rf"{OUT_DIR}\synchronized.png"
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-    print(f"Saved {path}")
-
-    # Two CSVs at native rates, both referenced to the same LSL t_start
+    # CSVs first — the source of truth, no heavy deps. Two CSVs at native rates,
+    # both referenced to the same LSL t_start.
     ecg_csv = rf"{OUT_DIR}\ecg_synchronized.csv"
     with open(ecg_csv, "w", newline="") as f:
         writer = csv.writer(f)
@@ -480,12 +492,15 @@ def save_synchronized(ecg_out, emg_out):
         writer.writerows(zip(t_emg_rel, t_emg_dev_rel, emg_out['EMG_CH1'], emg_out['EMG_CH2']))
     print(f"Saved {emg_csv}")
 
+    # Plot is best-effort (matplotlib may be absent in the frozen build).
+    _save_line_plot(
+        rf"{OUT_DIR}\synchronized.png", "Synchronized ECG + EMG (LSL-aligned)", t_ecg_rel,
+        [("Lead_I", ecg_out['Lead_I']), ("Lead_II", ecg_out['Lead_II']),
+         ("Lead_III", ecg_out['Lead_III'])],
+    )
+
 
 def save_single_stream(stream_name, stream_out):
-    import matplotlib
-    matplotlib.use('Agg')  # non-interactive backend, safe across threads
-    import matplotlib.pyplot as plt
-
     t_rel = stream_out['lsl_ts'] - stream_out['lsl_ts'][0]
     t_dev_rel = stream_out['device_ts'] - stream_out['device_ts'][0]
 
@@ -509,27 +524,15 @@ def save_single_stream(stream_name, stream_out):
         header = ["lsl_t_rel_s", "device_t_rel_s", "EMG_CH1_mV", "EMG_CH2_mV"]
         rows = zip(t_rel, t_dev_rel, stream_out['EMG_CH1'], stream_out['EMG_CH2'])
 
-    fig, axes = plt.subplots(len(channels), 1, figsize=(14, 3 * len(channels)), sharex=True)
-    if len(channels) == 1:
-        axes = [axes]
-
-    for ax, (name, signal) in zip(axes, channels):
-        ax.plot(t_rel, signal, linewidth=0.7)
-        ax.set_ylabel(f"{name}\n(mV)")
-        ax.grid(True, alpha=0.3)
-
-    axes[-1].set_xlabel("Time (s, LSL-aligned)")
-    fig.suptitle(f"Synchronized {stream_name} (LSL-aligned)")
-    fig.tight_layout()
-    fig.savefig(plot_path, dpi=150)
-    plt.close(fig)
-    print(f"Saved {plot_path}")
-
+    # CSV first — the source of truth, written before any optional plotting so a
+    # missing-matplotlib (frozen build) can't cost us the data.
     with open(csv_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(header)
         writer.writerows(rows)
     print(f"Saved {csv_path}")
+
+    _save_line_plot(plot_path, f"Synchronized {stream_name} (LSL-aligned)", t_rel, channels)
 
 
 def main(argv=None):
@@ -613,12 +616,18 @@ def main(argv=None):
         emg_ser.close()
     emit_marker(marker_outlet, marker_lock, "session_finished", "SYSTEM")
     print("All done.")
-    if run_mode == "both":
-        save_synchronized(ecg_out, emg_out)
-    elif run_mode == "ecg":
-        save_single_stream("ECG", ecg_out)
-    else:
-        save_single_stream("EMG", emg_out)
+    # Saving side-files is post-capture convenience: the real recording is the
+    # LSL/LabRecorder .xdf. Never let a save failure surface as an unhandled
+    # exception (it would pop a scary error dialog from the frozen worker).
+    try:
+        if run_mode == "both":
+            save_synchronized(ecg_out, emg_out)
+        elif run_mode == "ecg":
+            save_single_stream("ECG", ecg_out)
+        else:
+            save_single_stream("EMG", emg_out)
+    except Exception as exc:
+        print(f"[save error: {exc!r}] LSL/LabRecorder recording is unaffected.")
 
 
 if __name__ == "__main__":

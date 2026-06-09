@@ -142,6 +142,29 @@ def test_calibrate_done_button_needs_threshold(app, tmp_path):
     assert w.calibrate._done.isEnabled()
 
 
+def test_video_preview_show_status_clears_frame(app):
+    vp = VideoPreview()
+    vp.resize(320, 180)
+    vp.set_frame(synthetic_frame(1.0))
+    assert vp.pixmap() is not None and not vp.pixmap().isNull()
+    vp.show_status("● Recording to file\n12 frames captured")
+    assert "Recording to file" in vp.text()
+    assert vp.pixmap().isNull()  # the prior frame is cleared
+
+
+def test_liveview_plots_varying_ecg_channel_not_constant_ch0(app):
+    from sensorchrono.ui.main_window import LiveView
+    from sensorchrono.ui.pages import LivenessPage
+
+    lv = LiveView(LivenessPage(), dry_run=False)
+    # ch0 + ch1 constant (status), ch2 varies most, ch3 varies less — like a real
+    # Shimmer ECG frame. The preview must pick the live channel, not the flat ch0.
+    samples = [[1.0, 5.0, float(i % 7), float(i % 3)] for i in range(64)]
+    assert lv._pick_ecg_channel(samples) == 2
+    # sticky: re-picks only if the chosen channel goes flat
+    assert lv._pick_ecg_channel(samples) == 2
+
+
 def test_widgets_render_without_error(app):
     wf = WaveformWidget(buffer_n=256)
     wf.append(np.sin(np.linspace(0, 10, 500)))  # more than the buffer

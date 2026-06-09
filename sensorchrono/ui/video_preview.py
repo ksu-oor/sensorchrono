@@ -19,6 +19,13 @@ class VideoPreview(QtWidgets.QLabel):
         self.setText("no video")
         self.setStyleSheet("background:#111; color:#777; border:1px solid #333;")
 
+    def show_status(self, text: str) -> None:
+        """Show a text status instead of a frame. Used during real capture, where
+        the camera is held exclusively by the recording bridge so no live preview
+        is possible — an honest message beats a fake synthetic image."""
+        self.setPixmap(QtGui.QPixmap())  # clear any prior frame
+        self.setText(text)
+
     def set_frame(self, frame_bgr: np.ndarray) -> None:
         """Display an ``HxWx3`` uint8 BGR frame (as cv2 delivers)."""
         if frame_bgr is None or getattr(frame_bgr, "ndim", 0) != 3:

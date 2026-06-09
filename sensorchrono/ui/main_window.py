@@ -52,6 +52,9 @@ class LiveView(QtCore.QObject):
         self._t0 = time.monotonic()
         self._ecg = None
         self._audio = None
+        self._video = None
+        self._ecg_ch: int | None = None  # which ECG channel actually carries signal
+        self._video_frames = 0
 
     def start(self) -> None:
         self._resolve_inlets()
@@ -59,23 +62,37 @@ class LiveView(QtCore.QObject):
 
     def stop(self) -> None:
         self._timer.stop()
-        self._ecg = self._audio = None
+        self._ecg = self._audio = self._video = None
 
     def _resolve_inlets(self) -> None:
         try:
             import pylsl
         except Exception:
             return
-        for name, attr in ((StreamName.SHIMMER_ECG, "_ecg"), (StreamName.AUDIO, "_audio")):
+        for name, attr in ((StreamName.SHIMMER_ECG, "_ecg"), (StreamName.AUDIO, "_audio"),
+                           (StreamName.VIDEO_FRAMES, "_video")):
             found = pylsl.resolve_byprop("name", str(name), 1, 0.5)
             if found:
                 setattr(self, attr, pylsl.StreamInlet(found[0], max_buflen=2))
+
+    def _pick_ecg_channel(self, samples) -> int:
+        """Choose the ECG channel that actually carries signal. A Shimmer ECG
+        stream pairs the live leads with constant status channels (e.g. ch0);
+        plotting ch0 looks flatlined even when the heart trace is fine. Lock onto
+        the highest-variance channel, re-picking only if it goes flat."""
+        import numpy as np
+
+        stds = np.asarray(samples, dtype=float).std(axis=0)
+        if self._ecg_ch is None or self._ecg_ch >= len(stds) or stds[self._ecg_ch] < 1e-6:
+            self._ecg_ch = int(np.argmax(stds))
+        return self._ecg_ch
 
     def _tick(self) -> None:
         if self._ecg is not None:
             samples, _ = self._ecg.pull_chunk(timeout=0.0, max_samples=512)
             if samples:
-                self._page.waveform.append([row[0] for row in samples])
+                ch = self._pick_ecg_channel(samples)
+                self._page.waveform.append([row[ch] for row in samples])
         if self._audio is not None:
             samples, _ = self._audio.pull_chunk(timeout=0.0, max_samples=4096)
             if samples:
@@ -83,7 +100,23 @@ class LiveView(QtCore.QObject):
 
                 rms = float(np.sqrt(np.mean(np.square(np.asarray(samples, dtype=float)))))
                 self._page.meter.set_level(min(1.0, rms * 4))
-        self._page.preview.set_frame(synthetic_frame(time.monotonic() - self._t0))
+        if self._dry_run:
+            # Dry-run has no real camera: a moving synthetic pattern gives the
+            # staging page something to show.
+            self._page.preview.set_frame(synthetic_frame(time.monotonic() - self._t0))
+        else:
+            # Real capture: the recording bridge holds the camera exclusively, so
+            # a live pixel preview is impossible. Show honest feedback that frames
+            # are flowing rather than a misleading synthetic image.
+            if self._video is not None:
+                frames, _ = self._video.pull_chunk(timeout=0.0, max_samples=512)
+                if frames:
+                    self._video_frames += len(frames)
+            self._page.preview.show_status(
+                "● Recording to file\n"
+                "(live camera preview unavailable while capturing)\n"
+                f"{self._video_frames} frames captured"
+            )
 
 
 class MainWindow(QtWidgets.QMainWindow):
