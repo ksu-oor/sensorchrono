@@ -56,6 +56,9 @@ def test_camera_argv_and_mp4_path(tmp_path):
     tag = argv[argv.index("--tag") + 1]
     assert a.mp4_path(s) == s.out_dir / f"{tag}_video.mp4"
     assert tag == "p01_s1_rest"
+    # live-preview snapshot wired through for the staging page
+    assert argv[argv.index("--preview-path") + 1] == str(a.preview_path(s))
+    assert a.preview_path(s) == s.out_dir / f"{tag}_preview.jpg"
 
 
 def test_build_argv_dev_uses_dash_m(tmp_path):

@@ -19,6 +19,20 @@ class VideoPreview(QtWidgets.QLabel):
         self.setText("no video")
         self.setStyleSheet("background:#111; color:#777; border:1px solid #333;")
 
+    def show_image_file(self, path) -> bool:
+        """Load and display a JPEG/PNG snapshot from disk (the bridge's live
+        preview during real capture). Returns True if a valid image was shown."""
+        pix = QtGui.QPixmap(str(path))
+        if pix.isNull():
+            return False
+        self.setText("")
+        self.setPixmap(pix.scaled(
+            self.width(), self.height(),
+            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+            QtCore.Qt.TransformationMode.SmoothTransformation,
+        ))
+        return True
+
     def show_status(self, text: str) -> None:
         """Show a text status instead of a frame. Used during real capture, where
         the camera is held exclusively by the recording bridge so no live preview

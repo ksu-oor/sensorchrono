@@ -2,6 +2,7 @@
 guardrail behaviour and the config.yaml round-trip."""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -34,9 +35,19 @@ def test_valid_dry_run_config_passes(tmp_path):
     _valid(tmp_path).validate()  # should not raise
 
 
+@pytest.mark.skipif(
+    sys.platform.startswith("win"),
+    reason="documents the non-Windows default; on Windows real capture is the default (False)",
+)
 def test_default_dry_run_is_true_off_windows():
-    # Dev/CI here is macOS/Linux.
     assert default_dry_run() is True
+
+
+def test_default_dry_run_is_false_on_windows():
+    # Mirror of the above: on Windows (where the hardware lives) real capture is
+    # the default, so dry-run defaults False.
+    if sys.platform.startswith("win"):
+        assert default_dry_run() is False
 
 
 @pytest.mark.parametrize("label", ["", "   ", "has space", "bad/slash"])

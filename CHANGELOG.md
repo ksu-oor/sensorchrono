@@ -1,5 +1,30 @@
 # LSL Sync Lab Notebook
 
+## 2026-06-09 (later) — unblock "Go to Recording" + a real live video preview
+
+On hardware the operator reported the **"Go to Recording" button never enabled**,
+so the app's own record flow never ran (they had to drive LabRecorder by hand —
+which is why the .xdf used LabRecorder's default name and needed a manual Stop).
+
+- **THE blocker — liveness gate was unsatisfiable.** The staging gate needs every
+  expected stream rated "healthy", but the verdict logic used a fixed 0.5 s rate
+  window and a fixed 0.5 s max-gap — impossible for the **1 Hz
+  ShimmerDiagnostics_ECG**, which shows 0 samples in most polls and ~1 s gaps *by
+  definition*. So that stream was permanently "unhealthy" → the gate never went
+  green → the button stayed disabled forever. Made the verdict **rate-aware**
+  (`compute_stream_liveness`): the gap limit scales to the nominal period
+  (`max(0.5 s, 3·period)`) and the rate floor is only enforced when the poll
+  window can actually observe ≥2 samples. A genuinely stalled slow stream is still
+  caught. Verified the recorded XDF: all channel counts match the contract, so
+  this was the sole blocker.
+- **Real live video preview (~2 FPS).** The GUI can't open the camera (the bridge
+  holds it), so the bridge now writes a small JPEG snapshot ~2×/s
+  (`--preview-path`, atomic encode+replace) and the staging page displays it — a
+  genuine live view for operator confidence, replacing the "frames captured" text.
+  Falls back to the status line until the first frame lands or if it goes stale.
+- **Test hygiene:** the off-Windows `default_dry_run` assertion now skips on
+  Windows (with a Windows-side mirror), so the suite is fully green on the lab box.
+
 ## 2026-06-09 — matplotlib crash + staging-preview honesty
 
 Staging now passes on hardware (all six streams, real ECG), so the next round is
