@@ -158,7 +158,9 @@ class _SimAdapter(DeviceAdapter):
                     mode = "synthetic (no pylsl)"
                 return ReadyResult(True, f"{self.name}: {mode}", elapsed)
             if time.monotonic() >= deadline:
-                return ReadyResult(False, f"{self.name}: not ready within {timeout_s:.2f}s", elapsed)
+                # Plain reason only — the supervisor frames the elapsed/timeout
+                # wording so the message never shows a misleading residual time.
+                return ReadyResult(False, f"{self.name}: outlet never went live", elapsed)
             time.sleep(0.01)
 
     def check_liveness(self, window_s: float) -> LivenessReport:

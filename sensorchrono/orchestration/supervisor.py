@@ -22,9 +22,16 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from sensorchrono.devices.base import DeviceAdapter, ReadyResult
+
+#: how many trailing stdout lines to surface in a readiness-failure message.
+#: Field failures (e.g. a Shimmer's per-command "Configure EXG chip 1: TIMEOUT"
+#: sequence) need more than the last line to be diagnosable; the full sequence
+#: still lives in the per-bridge log file.
+_FAIL_TAIL_LINES = 10
 
 
 @dataclass
@@ -35,6 +42,10 @@ class BridgeSpec:
     argv: list[str]  # full command, e.g. [python, "-m", "sensorchrono.bridges.video_lsl_bridge", "--duration", "90", ...]
     ready_pattern: re.Pattern[str]  # matches the bridge's stdout readiness line
     cwd: Path | None = None
+    #: when set, every stdout line is teed (timestamped) to
+    #: ``<log_dir>/bridge_<name>.log`` — a session-scoped record that outlives the
+    #: process and the 200-line ring buffer, so a field failure stays debuggable.
+    log_dir: Path | None = None
 
 
 class BridgeProcess:
@@ -47,6 +58,9 @@ class BridgeProcess:
         self._ready = threading.Event()
         self._log: deque[str] = deque(maxlen=max_log_lines)
         self._lock = threading.Lock()
+        #: per-bridge log file + its open handle (None unless spec.log_dir set).
+        self.log_path: Path | None = None
+        self._logfile = None
 
     # -- lifecycle ----------------------------------------------------------
     def start(self) -> None:
@@ -60,6 +74,7 @@ class BridgeProcess:
         # match and staging wrongly fails even though the LSL stream is live.
         # PYTHONUNBUFFERED is honoured by both the dev interpreter (``-m``) and
         # the frozen PyInstaller exe (``--run-bridge``).
+        self._open_logfile()
         env = {**os.environ, "PYTHONUNBUFFERED": "1"}
         self._proc = subprocess.Popen(
             self.spec.argv,
@@ -73,14 +88,42 @@ class BridgeProcess:
         self._reader = threading.Thread(target=self._read_stdout, name=f"bridge-{self.spec.name}", daemon=True)
         self._reader.start()
 
+    def _open_logfile(self) -> None:
+        """Open the per-bridge log file if a ``log_dir`` was given. Best-effort:
+        a logging failure must never stop a real capture from starting."""
+        if self.spec.log_dir is None or self._logfile is not None:
+            return
+        try:
+            self.spec.log_dir.mkdir(parents=True, exist_ok=True)
+            self.log_path = self.spec.log_dir / f"bridge_{self.spec.name}.log"
+            # line-buffered so each line is flushed as the bridge emits it.
+            self._logfile = open(self.log_path, "a", encoding="utf-8", buffering=1)
+        except Exception:
+            self.log_path = None
+            self._logfile = None
+
     def _read_stdout(self) -> None:
         assert self._proc is not None and self._proc.stdout is not None
         for line in self._proc.stdout:
             line = line.rstrip("\n")
             with self._lock:
                 self._log.append(line)
+            if self._logfile is not None:
+                try:
+                    self._logfile.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} {line}\n")
+                except Exception:
+                    pass  # a dead log file must not kill the readiness scan
             if not self._ready.is_set() and self.spec.ready_pattern.search(line):
                 self._ready.set()
+
+    def _failure_evidence(self) -> str:
+        """The last N stdout lines + the full-log path, for a failure message.
+        The caller (supervisor) frames the elapsed/timeout wording; this is just
+        the evidence, so the timing isn't the misleading per-call residual."""
+        tail = " | ".join(self.recent_output()[-_FAIL_TAIL_LINES:]) or "(no output)"
+        if self.log_path is not None:
+            return f"last output: {tail} — full log: {self.log_path}"
+        return f"last output: {tail}"
 
     def wait_ready(self, timeout_s: float) -> ReadyResult:
         """Block until the readiness line appears, the process dies, or timeout."""
@@ -91,11 +134,9 @@ class BridgeProcess:
                 return ReadyResult(True, f"{self.spec.name}: ready", time.monotonic() - start)
             rc = self.returncode
             if rc is not None:  # exited before printing readiness -> failure
-                tail = " | ".join(self.recent_output()[-3:])
-                return ReadyResult(False, f"{self.spec.name}: exited rc={rc} before ready ({tail})", time.monotonic() - start)
+                return ReadyResult(False, f"{self.spec.name}: exited rc={rc} before ready ({self._failure_evidence()})", time.monotonic() - start)
             if time.monotonic() >= deadline:
-                tail = " | ".join(self.recent_output()[-3:])
-                return ReadyResult(False, f"{self.spec.name}: not ready within {timeout_s:.1f}s ({tail})", time.monotonic() - start)
+                return ReadyResult(False, f"{self.spec.name}: outlet never went live ({self._failure_evidence()})", time.monotonic() - start)
             time.sleep(0.02)
 
     def stop(self, term_grace_s: float = 5.0) -> None:
@@ -116,6 +157,12 @@ class BridgeProcess:
         if self._reader is not None:
             self._reader.join(timeout=2.0)
             self._reader = None
+        if self._logfile is not None:
+            try:
+                self._logfile.close()
+            except Exception:  # pragma: no cover - defensive
+                pass
+            self._logfile = None
         self._proc = None
 
     # -- introspection ------------------------------------------------------
@@ -172,7 +219,8 @@ class Supervisor:
         non-blockingly until all are ready or the shared deadline passes — each
         device effectively gets the *full* window, and a healthy fast device is
         never starved by a slow sibling. Returns as soon as all are ready."""
-        deadline = time.monotonic() + max(0.0, timeout_s)
+        staging_start = time.monotonic()
+        deadline = staging_start + max(0.0, timeout_s)
         results: dict[str, ReadyResult] = {}
         pending = list(self.adapters)
         while pending and time.monotonic() < deadline:
@@ -186,10 +234,23 @@ class Supervisor:
             pending = still
             if pending:
                 time.sleep(poll_s)
-        # Final blocking check for anything still pending, sharing what's left of
-        # the deadline so a genuinely-dead device still produces its failure note.
+        # Anything still pending genuinely failed to come up within the window.
+        # Report the ACTUAL elapsed staging time + the configured timeout, never
+        # the residual deadline (which is ~0 here and produced the infamous,
+        # misleading "not ready within 0.0s"). The adapter's own detail supplies
+        # the evidence (its last output + log-file path); we frame the timing.
         for a in pending:
-            results[a.name] = a.is_ready(max(0.0, deadline - time.monotonic()))
+            r = a.is_ready(0.0)
+            if r.ok:  # latched ready in the final microseconds — keep the success
+                results[a.name] = r
+                continue
+            elapsed = time.monotonic() - staging_start
+            evidence = r.detail.removeprefix(f"{a.name}: ")
+            results[a.name] = ReadyResult(
+                False,
+                f"{a.name}: not ready after {elapsed:.1f}s (timeout {timeout_s:.0f}s) — {evidence}",
+                elapsed,
+            )
         return FleetReadiness(results)
 
     def stop_all(self) -> list[tuple[str, Exception]]:

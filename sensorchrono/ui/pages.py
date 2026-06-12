@@ -370,6 +370,7 @@ class DonePage(QtWidgets.QWidget):
 class ErrorPage(QtWidgets.QWidget):
     retry = QtCore.Signal()
     abort = QtCore.Signal()
+    open_logs = QtCore.Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -380,8 +381,14 @@ class ErrorPage(QtWidgets.QWidget):
         retry.clicked.connect(self.retry.emit)
         abort = QtWidgets.QPushButton("Abort")
         abort.clicked.connect(self.abort.emit)
+        # The full diagnostic detail (per-bridge ACK/TIMEOUT logs, COM-port
+        # enumeration) lives on disk — give the operator one click to it so a
+        # field failure can be zipped and sent to support.
+        logs = QtWidgets.QPushButton("Open log folder")
+        logs.clicked.connect(self.open_logs.emit)
         buttons = QtWidgets.QHBoxLayout()
         buttons.addWidget(abort)
+        buttons.addWidget(logs)
         buttons.addStretch(1)
         buttons.addWidget(retry)
 

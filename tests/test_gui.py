@@ -246,6 +246,32 @@ def test_recorded_xdf_none_in_dry_run(app, tmp_path):
     assert w._recorded_mp4() is None
 
 
+def test_error_page_open_logs_button_emits(app, tmp_path):
+    from sensorchrono.ui.pages import ErrorPage
+
+    page = ErrorPage()
+    page.show_error("devices not ready: shimmer_exg: not ready after 60.0s (timeout 60s)")
+    fired = []
+    page.open_logs.connect(lambda: fired.append(True))
+    # find the button by its label and click it
+    btn = next(b for b in page.findChildren(QtWidgets.QPushButton) if b.text() == "Open log folder")
+    btn.click()
+    assert fired
+
+
+def test_open_logs_prefers_session_logs_dir(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("SENSORCHRONO_LOG_DIR", str(tmp_path / "applogs"))
+    out = tmp_path / "o"
+    (out / "logs").mkdir(parents=True)
+    w = MainWindow(_session(tmp_path, out_dir=out))
+    opened = {}
+    from PySide6 import QtGui
+
+    monkeypatch.setattr(QtGui.QDesktopServices, "openUrl", lambda url: opened.setdefault("url", url))
+    w._open_logs()
+    assert opened["url"].toLocalFile().rstrip("/").endswith("o/logs")
+
+
 def test_close_event_tears_down_controller(app, tmp_path):
     w = MainWindow(_session(tmp_path))
     w._build_controller(w._base_session)

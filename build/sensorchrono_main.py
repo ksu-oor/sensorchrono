@@ -44,8 +44,16 @@ def _main() -> int:
         _unbuffer_std_streams()  # critical: supervisor reads readiness from this stdout
         import importlib
 
+        # No setup_logging() here: bridge stdout is teed to a per-session file by
+        # the parent supervisor, and the rotating GUI log file is not safe to
+        # share across the GUI + several bridge processes.
         module = importlib.import_module(argv[1])
         return module.main(argv[2:]) or 0
+    # GUI branch: the frozen exe has no console, so a log file is the only record.
+    from sensorchrono.diagnostics_log import log_environment_snapshot, setup_logging
+
+    setup_logging(debug="--debug" in argv)
+    log_environment_snapshot()
     from sensorchrono.ui.main_window import run
 
     return run(argv)

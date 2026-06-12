@@ -2,6 +2,7 @@
 
 Launches the PySide6 wizard. With ``--info`` (or when PySide6 isn't installed)
 it prints an environment/profile summary instead — handy on a bare box.
+``--debug`` raises the file log to DEBUG (same as ``SENSORCHRONO_DEBUG=1``).
 """
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ import sys
 
 from sensorchrono import __version__
 from sensorchrono.config import default_dry_run
+from sensorchrono.diagnostics_log import log_environment_snapshot, setup_logging
 from sensorchrono.profiles import list_profiles
 
 
@@ -44,8 +46,13 @@ def _print_info() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    debug = "--debug" in argv
+    log_path = setup_logging(debug=debug)
+    log_environment_snapshot()
     if "--info" in argv:
+        print(f"logs: {log_path}")
         return _print_info()
+    argv = [a for a in argv if a != "--debug"]  # GUI run() doesn't parse it
     try:
         from sensorchrono.ui.main_window import run
     except Exception as exc:  # PySide6 missing → fall back to the text summary
