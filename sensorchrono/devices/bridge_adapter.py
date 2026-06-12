@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 import sys
+from pathlib import Path
 
 from sensorchrono.devices.base import (
     DeviceAdapter,
@@ -80,7 +81,10 @@ class BridgeAdapter(DeviceAdapter):
         # cwd=None: the bridge is resolved by module name (dev ``-m`` finds the
         # package from the repo-root cwd the app inherits; frozen ``--run-bridge``
         # doesn't use cwd) and takes an explicit ``--out-dir``, so cwd is moot.
-        spec = BridgeSpec(self.name, self.build_argv(session), self._ready_pattern(), cwd=None)
+        # log_dir lives next to the recording it explains (<out_dir>/logs) so the
+        # full per-bridge ACK/TIMEOUT sequence survives the session for triage.
+        log_dir = Path(session.out_dir) / "logs"
+        spec = BridgeSpec(self.name, self.build_argv(session), self._ready_pattern(), cwd=None, log_dir=log_dir)
         self._proc = BridgeProcess(spec)
         self._proc.start()
 

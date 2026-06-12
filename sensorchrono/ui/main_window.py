@@ -179,6 +179,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.done.open_output.connect(self._open_output_folder)
         self.error.retry.connect(self._retry)
         self.error.abort.connect(self._abort)
+        self.error.open_logs.connect(self._open_logs)
 
         # timers
         self._liveness_timer = QtCore.QTimer(self)
@@ -250,6 +251,11 @@ class MainWindow(QtWidgets.QMainWindow):
     # -- transitions (page actions) ----------------------------------------
     def _start_session(self) -> None:
         self.setup.apply_to(self._base_session)
+        # Snapshot the resolved session (incl. device bindings) so the log opens
+        # with "here's exactly what this run was configured to capture".
+        from sensorchrono.diagnostics_log import log_environment_snapshot
+
+        log_environment_snapshot(self._base_session)
         self._persist_session()  # remember device bindings for next launch
         self._build_controller(self._base_session)
         try:
@@ -303,6 +309,21 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
         QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(out)))
+
+    def _open_logs(self) -> None:
+        """Open the diagnostic logs: the session's ``<out_dir>/logs`` (per-bridge
+        files) when it exists, else the app-wide ``~/.sensorchrono/logs``."""
+        from PySide6 import QtGui
+
+        from sensorchrono.diagnostics_log import log_dir as app_log_dir
+
+        session_logs = Path(self._base_session.out_dir) / "logs"
+        target = session_logs if session_logs.is_dir() else app_log_dir()
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(target)))
 
     def _recorded_xdf(self) -> Path | None:
         """The .xdf LabRecorder just wrote, found as the newest under the
