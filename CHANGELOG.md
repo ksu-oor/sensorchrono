@@ -1,5 +1,44 @@
 # LSL Sync Lab Notebook
 
+## 2026-06-12 — verbose diagnostic logging for Windows field failures (COM3/RCS)
+
+Made the next field failure debuggable from a log folder. The bench symptom was
+`devices not ready; shimmer_exg not ready within 0.0s (COM3)` plus a misleading
+dry-run `RCS not reachable` warning — and **nothing persisted to disk** to triage
+after the fact (frozen GUI has no console; bridges only `print()`, and only the
+last 3 lines reached the GUI error box).
+
+- **Central logging** — new `sensorchrono/diagnostics_log.py`. `setup_logging()`
+  installs a rotating `~/.sensorchrono/logs/sensorchrono.log` (INFO; DEBUG via
+  `--debug` / `SENSORCHRONO_DEBUG`; relocatable via `SENSORCHRONO_LOG_DIR`) plus a
+  one-shot environment snapshot (version, platform, frozen, **device bindings**).
+  Wired into `__main__` (`--debug`) and the frozen GUI entry. Only the GUI/main
+  process owns the rotating file — it's not multiprocess-safe, so bridges are
+  persisted separately (below).
+- **Persist full bridge output** — `supervisor.py` tees every bridge stdout line,
+  timestamped, to a session-scoped `<out_dir>/logs/bridge_<name>.log` (derived
+  from the session in `BridgeAdapter.launch`), and surfaces a **10-line tail +
+  the log-file path** on a readiness failure instead of just the last 3 lines.
+- **Killed the misleading "0.0s".** It was a deadline-accounting artifact — the
+  final readiness check reported the *residual* deadline. `wait_until_ready` now
+  tracks real staging-elapsed and reports `not ready after 60.0s (timeout 60s) —
+  …`; `BridgeProcess`/sim adapters emit reason-only details and the supervisor
+  frames the timing.
+- **Preflight COM-port forensics** — enumerate + log every serial port (device,
+  description, VID:PID, HWID); `classify_serial_error()` distinguishes *port
+  absent* / *in use by another app* / *not found*; the dry-run RCS check is
+  reworded to *"expected in dry run"* (it probes before LabRecorder is launched);
+  every `CheckResult` is logged.
+- **GUI** — an "Open log folder" button on the error page, pointing at the session
+  `logs/` dir (falling back to `~/.sensorchrono/logs`).
+
+`classify_serial_error` ships with a working baseline; its Windows case-mapping is
+the intended place to refine against real bench failures (the test contract is
+deliberately loose). Tests: new `test_diagnostics_log.py`; extended supervisor /
+preflight / entry-point / GUI tests. Suite green (174 passed, 4 GUI skipped
+off-box). Next: confirm on the Windows rig that the COM3 failure now yields the
+full ACK/TIMEOUT log + port enumeration.
+
 ## 2026-06-09 (end of day) — auto post-processing baked in + clearer step-by-step UX
 
 Closed the loop so the app delivers the **cleansed, time-aligned dataset** itself,
